@@ -1,46 +1,41 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
- */
 package citybites.main;
 
-import citybites.data.DataStore;
+import citybites.config.DatabaseInitializer;
 import citybites.ui.WelcomeFrame;
+import com.formdev.flatlaf.FlatLightLaf;
 import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
 
-/**
- *
- * @author User
- */
 public class Main {
 
     public static void main(String[] args) {
 
-        DataStore.loadSampleData();
-
+        // Apply FlatLaf modern look and feel before any UI is created
         try {
-            UIManager.setLookAndFeel(
-                    UIManager.getSystemLookAndFeelClassName()
-            );
-        } catch (Exception exception) {
-            System.out.println(
-                    "Default look and feel will be used."
-            );
+            FlatLightLaf.setup();
+        } catch (Exception e) {
+            try {
+                UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+            } catch (Exception ignored) {}
         }
 
-        SwingUtilities.invokeLater(() -> {
-            WelcomeFrame welcomeFrame
-                    = new WelcomeFrame();
+        // Initialise the database: create tables and seed default data
+        try {
+            DatabaseInitializer.initialize();
+        } catch (RuntimeException e) {
+            // Show a dialog and exit if the DB cannot be reached
+            javax.swing.JOptionPane.showMessageDialog(
+                    null,
+                    "Cannot connect to the database.\n\n"
+                    + e.getMessage()
+                    + "\n\nPlease ensure MySQL is running and db.properties is configured.",
+                    "Database Error",
+                    javax.swing.JOptionPane.ERROR_MESSAGE
+            );
+            System.exit(1);
+        }
 
-            welcomeFrame.setVisible(true);
-        });
-        SwingUtilities.invokeLater(() -> {
-            WelcomeFrame welcomeFrame
-                    = new WelcomeFrame();
-
-            welcomeFrame.setVisible(true);
-        });
+        // Launch the UI on the Event Dispatch Thread (single WelcomeFrame)
+        SwingUtilities.invokeLater(() -> new WelcomeFrame().setVisible(true));
     }
-
 }
