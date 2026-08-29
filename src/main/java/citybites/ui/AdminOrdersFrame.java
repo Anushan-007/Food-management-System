@@ -7,6 +7,7 @@ import java.awt.*;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import javax.swing.*;
+import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 
 public class AdminOrdersFrame extends javax.swing.JFrame {
@@ -19,63 +20,37 @@ public class AdminOrdersFrame extends javax.swing.JFrame {
     public AdminOrdersFrame() {
         initComponents();
         setTitle("City Bites - Customer Orders");
-        setSize(1050, 750);
+        setMinimumSize(new Dimension(980, 680));
+        setSize(1100, 760);
         setLocationRelativeTo(null);
-        setResizable(false);
+        setResizable(true);
 
+        // Status dropdown includes all valid target statuses
         cmbStatus.setModel(new javax.swing.DefaultComboBoxModel<>(
-                new String[]{"Pending", "Preparing", "Completed", "Cancelled"}));
+                new String[]{"Preparing", "Ready", "Completed", "Cancelled"}));
         btnUpdateStatus.setEnabled(false);
 
-        applyTableStyle(tblOrders);
-        applyTableStyle(tblOrderItems);
+        AppTheme.styleTable(tblOrders);
+        AppTheme.styleTable(tblOrderItems);
 
         tblOrders.getColumnModel().getColumn(0).setPreferredWidth(80);
         tblOrders.getColumnModel().getColumn(1).setPreferredWidth(200);
         tblOrders.getColumnModel().getColumn(2).setPreferredWidth(150);
         tblOrders.getColumnModel().getColumn(3).setPreferredWidth(120);
-        tblOrders.getColumnModel().getColumn(4).setPreferredWidth(120);
+        tblOrders.getColumnModel().getColumn(4).setPreferredWidth(110);
 
-        tblOrderItems.getColumnModel().getColumn(0).setPreferredWidth(320);
+        tblOrderItems.getColumnModel().getColumn(0).setPreferredWidth(300);
         tblOrderItems.getColumnModel().getColumn(1).setPreferredWidth(120);
-        tblOrderItems.getColumnModel().getColumn(2).setPreferredWidth(100);
-        tblOrderItems.getColumnModel().getColumn(3).setPreferredWidth(130);
+        tblOrderItems.getColumnModel().getColumn(2).setPreferredWidth(90);
+        tblOrderItems.getColumnModel().getColumn(3).setPreferredWidth(120);
+
+        // Colour-code status column
+        tblOrders.getColumnModel().getColumn(4).setCellRenderer(new StatusCellRenderer());
 
         loadOrdersTable();
 
         tblOrders.getSelectionModel().addListSelectionListener(event -> {
             if (!event.getValueIsAdjusting()) selectOrder();
-        });
-    }
-
-    private void applyTableStyle(JTable table) {
-        table.setFont(new Font("Segoe UI", Font.PLAIN, 13));
-        table.setRowHeight(24);
-        table.setGridColor(new Color(220, 225, 230));
-        table.setSelectionBackground(new Color(210, 228, 248));
-        table.setSelectionForeground(new Color(30, 30, 30));
-        table.getTableHeader().setReorderingAllowed(false);
-        table.setFillsViewportHeight(true);
-        table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-
-        table.getTableHeader().setDefaultRenderer(
-                new javax.swing.table.DefaultTableCellRenderer() {
-            {
-                setOpaque(true);
-                setBackground(new Color(52, 73, 94));
-                setForeground(Color.WHITE);
-                setFont(new Font("Segoe UI", Font.BOLD, 13));
-                setBorder(BorderFactory.createCompoundBorder(
-                        BorderFactory.createMatteBorder(0, 0, 0, 1, new Color(80, 100, 120)),
-                        BorderFactory.createEmptyBorder(4, 8, 4, 8)));
-            }
-            @Override
-            public Component getTableCellRendererComponent(
-                    JTable tbl, Object value, boolean isSelected,
-                    boolean hasFocus, int row, int column) {
-                setText(value != null ? value.toString() : "");
-                return this;
-            }
         });
     }
 
@@ -95,28 +70,37 @@ public class AdminOrdersFrame extends javax.swing.JFrame {
                 });
             }
         } catch (Exception e) {
-            JOptionPane.showMessageDialog(this,
-                    "Error loading orders: " + e.getMessage(),
+            JOptionPane.showMessageDialog(this, "Error loading orders: " + e.getMessage(),
                     "Database Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
     private void selectOrder() {
-        int selectedRow = tblOrders.getSelectedRow();
-        if (selectedRow == -1) return;
-        selectedOrderId = Integer.parseInt(tblOrders.getValueAt(selectedRow, 0).toString());
-        Order selectedOrder = findSelectedOrder();
-        if (selectedOrder == null) return;
-        cmbStatus.setSelectedItem(selectedOrder.getStatus());
-        loadOrderItems(selectedOrder);
+        int row = tblOrders.getSelectedRow();
+        if (row == -1) return;
+        selectedOrderId = Integer.parseInt(tblOrders.getValueAt(row, 0).toString());
+        Order selected = findSelectedOrder();
+        if (selected == null) return;
+        // Pre-select the next logical status
+        String next = nextStatus(selected.getStatus());
+        if (next != null) cmbStatus.setSelectedItem(next);
+        loadOrderItems(selected);
         btnUpdateStatus.setEnabled(true);
+        lblCurrentStatus.setText("Current status: " + selected.getStatus());
+    }
+
+    private String nextStatus(String current) {
+        return switch (current) {
+            case "Pending"   -> "Preparing";
+            case "Preparing" -> "Ready";
+            case "Ready"     -> "Completed";
+            default          -> null;
+        };
     }
 
     private Order findSelectedOrder() {
         if (orders == null) return null;
-        for (Order o : orders) {
-            if (o.getOrderId() == selectedOrderId) return o;
-        }
+        for (Order o : orders) { if (o.getOrderId() == selectedOrderId) return o; }
         return null;
     }
 
@@ -136,8 +120,8 @@ public class AdminOrdersFrame extends javax.swing.JFrame {
     @SuppressWarnings("unchecked")
     // <editor-fold defaultstate="collapsed" desc="Generated Code">//GEN-BEGIN:initComponents
     private void initComponents() {
-
         lblTitle        = new javax.swing.JLabel();
+        lblCurrentStatus = new javax.swing.JLabel();
         jScrollPane1    = new javax.swing.JScrollPane();
         tblOrders       = new javax.swing.JTable();
         lblOrderItems   = new javax.swing.JLabel();
@@ -146,29 +130,23 @@ public class AdminOrdersFrame extends javax.swing.JFrame {
         lblStatus       = new javax.swing.JLabel();
         cmbStatus       = new javax.swing.JComboBox<>();
         btnUpdateStatus = new javax.swing.JButton();
+        btnRefresh      = new javax.swing.JButton();
         btnBack         = new javax.swing.JButton();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
 
-        lblTitle.setText("Customer Orders");
-        lblTitle.setFont(new Font("Segoe UI", Font.BOLD, 22));
-        lblTitle.setForeground(new Color(44, 62, 80));
+        // ── Header ──────────────────────────────────────────────
+        JPanel header = AppTheme.headerPanel("Customer Orders");
 
-        lblOrderItems.setText("Selected Order Items");
-        lblOrderItems.setFont(new Font("Segoe UI", Font.BOLD, 14));
-        lblOrderItems.setForeground(new Color(52, 73, 94));
-
-        lblStatus.setText("Order Status:");
-        lblStatus.setFont(new Font("Segoe UI", Font.PLAIN, 13));
-
+        // ── Tables ──────────────────────────────────────────────
         tblOrders.setModel(new javax.swing.table.DefaultTableModel(
                 new Object[][]{},
-                new String[]{"Order ID", "Customer", "Order Date", "Total", "Status"}
+                new String[]{"Order ID", "Customer", "Order Date", "Total (Rs.)", "Status"}
         ) {
             @Override public boolean isCellEditable(int row, int column) { return false; }
         });
         jScrollPane1.setViewportView(tblOrders);
-        jScrollPane1.setBorder(BorderFactory.createLineBorder(new Color(200, 210, 220)));
+        jScrollPane1.setBorder(javax.swing.BorderFactory.createLineBorder(AppTheme.BORDER));
 
         tblOrderItems.setModel(new javax.swing.table.DefaultTableModel(
                 new Object[][]{},
@@ -177,81 +155,98 @@ public class AdminOrdersFrame extends javax.swing.JFrame {
             @Override public boolean isCellEditable(int row, int column) { return false; }
         });
         jScrollPane2.setViewportView(tblOrderItems);
-        jScrollPane2.setBorder(BorderFactory.createLineBorder(new Color(200, 210, 220)));
+        jScrollPane2.setBorder(javax.swing.BorderFactory.createLineBorder(AppTheme.BORDER));
 
-        cmbStatus.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        // ── Labels ──────────────────────────────────────────────
+        lblOrderItems.setText("Selected Order Items");
+        lblOrderItems.setFont(AppTheme.FONT_HEADING);
+        lblOrderItems.setForeground(AppTheme.TEXT_PRIMARY);
+
+        lblStatus.setText("Change Status:");
+        lblStatus.setFont(AppTheme.FONT_BODY);
+        lblStatus.setForeground(AppTheme.TEXT_PRIMARY);
+
+        lblCurrentStatus.setText("Select an order above");
+        lblCurrentStatus.setFont(AppTheme.FONT_SMALL);
+        lblCurrentStatus.setForeground(AppTheme.TEXT_MUTED);
+
+        // ── Buttons ─────────────────────────────────────────────
+        cmbStatus.setFont(AppTheme.FONT_BODY);
         cmbStatus.setPreferredSize(new Dimension(140, 28));
-        cmbStatus.setModel(new javax.swing.DefaultComboBoxModel<>(
-                new String[]{"Pending", "Preparing", "Completed", "Cancelled"}));
 
-        btnUpdateStatus.setText("Update Status");
-        btnUpdateStatus.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        btnUpdateStatus = AppTheme.primaryBtn("Update Status");
         btnUpdateStatus.setPreferredSize(new Dimension(130, 30));
         btnUpdateStatus.addActionListener(this::btnUpdateStatusActionPerformed);
 
-        btnBack.setText("Back");
-        btnBack.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        btnRefresh = AppTheme.secondaryBtn("Refresh");
+        btnRefresh.setPreferredSize(new Dimension(90, 30));
+        btnRefresh.addActionListener(e -> { loadOrdersTable(); resetSelection(); });
+
+        btnBack = AppTheme.secondaryBtn("Back");
         btnBack.setPreferredSize(new Dimension(90, 30));
         btnBack.addActionListener(this::btnBackActionPerformed);
 
+        // ── Section labels ───────────────────────────────────────
+        JLabel allOrdersLbl = new JLabel("All Orders");
+        allOrdersLbl.setFont(AppTheme.FONT_HEADING);
+        allOrdersLbl.setForeground(AppTheme.TEXT_PRIMARY);
+
         JPanel ordersSection = new JPanel(new BorderLayout(0, 6));
-        ordersSection.setBackground(Color.WHITE);
-        JLabel ordersLabel = new JLabel("All Orders");
-        ordersLabel.setFont(new Font("Segoe UI", Font.BOLD, 14));
-        ordersLabel.setForeground(new Color(52, 73, 94));
-        ordersSection.add(ordersLabel,  BorderLayout.NORTH);
+        ordersSection.setBackground(AppTheme.BG_CARD);
+        ordersSection.add(allOrdersLbl, BorderLayout.NORTH);
         ordersSection.add(jScrollPane1, BorderLayout.CENTER);
 
         JPanel itemsSection = new JPanel(new BorderLayout(0, 6));
-        itemsSection.setBackground(Color.WHITE);
+        itemsSection.setBackground(AppTheme.BG_CARD);
         itemsSection.add(lblOrderItems, BorderLayout.NORTH);
         itemsSection.add(jScrollPane2,  BorderLayout.CENTER);
 
-        JPanel statusBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 8));
-        statusBar.setBackground(new Color(245, 246, 248));
-        statusBar.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(200, 210, 220)));
+        JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, ordersSection, itemsSection);
+        split.setDividerLocation(310);
+        split.setDividerSize(6);
+        split.setBackground(AppTheme.BG_CARD);
+        split.setBorder(javax.swing.BorderFactory.createEmptyBorder(0, 18, 0, 18));
+
+        JPanel contentPanel = new JPanel(new BorderLayout());
+        contentPanel.setBackground(AppTheme.BG_MAIN);
+        contentPanel.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 0, 0, 0));
+        contentPanel.add(split, BorderLayout.CENTER);
+
+        // ── Status bar ───────────────────────────────────────────
+        JPanel statusBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 10));
+        statusBar.setBackground(AppTheme.BG_FOOTER);
+        statusBar.setBorder(AppTheme.footerBorder());
+        statusBar.add(lblCurrentStatus);
+        statusBar.add(Box.createHorizontalStrut(16));
         statusBar.add(lblStatus);
         statusBar.add(cmbStatus);
-        statusBar.add(Box.createHorizontalStrut(10));
         statusBar.add(btnUpdateStatus);
-        statusBar.add(Box.createHorizontalStrut(20));
+        statusBar.add(Box.createHorizontalStrut(10));
+        statusBar.add(btnRefresh);
+        statusBar.add(Box.createHorizontalStrut(10));
         statusBar.add(btnBack);
 
-        JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, ordersSection, itemsSection);
-        splitPane.setDividerLocation(310);
-        splitPane.setDividerSize(8);
-        splitPane.setBackground(Color.WHITE);
-        splitPane.setBorder(BorderFactory.createEmptyBorder(0, 18, 0, 18));
-
-        JPanel headerPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 18, 14));
-        headerPanel.setBackground(Color.WHITE);
-        headerPanel.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(200, 210, 220)));
-        headerPanel.add(lblTitle);
-
-        getContentPane().setBackground(Color.WHITE);
+        getContentPane().setBackground(AppTheme.BG_MAIN);
         getContentPane().setLayout(new BorderLayout());
-        getContentPane().add(headerPanel, BorderLayout.NORTH);
-        getContentPane().add(splitPane,   BorderLayout.CENTER);
-        getContentPane().add(statusBar,   BorderLayout.SOUTH);
-
+        getContentPane().add(header,       BorderLayout.NORTH);
+        getContentPane().add(contentPanel, BorderLayout.CENTER);
+        getContentPane().add(statusBar,    BorderLayout.SOUTH);
     }// </editor-fold>//GEN-END:initComponents
 
     private void btnUpdateStatusActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnUpdateStatusActionPerformed
         if (selectedOrderId == -1) {
             JOptionPane.showMessageDialog(this, "Please select an order.",
-                    "No Order Selected", JOptionPane.WARNING_MESSAGE);
-            return;
+                    "No Order Selected", JOptionPane.WARNING_MESSAGE); return;
         }
         String newStatus = cmbStatus.getSelectedItem().toString();
         try {
             OrderService.updateOrderStatus(selectedOrderId, newStatus);
-            JOptionPane.showMessageDialog(this, "Order status updated successfully!");
+            JOptionPane.showMessageDialog(this, "Order #" + selectedOrderId + " updated to: " + newStatus);
             loadOrdersTable();
             resetSelection();
         } catch (Exception e) {
-            JOptionPane.showMessageDialog(this,
-                    "Error updating status: " + e.getMessage(),
-                    "Database Error", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Cannot update: " + e.getMessage(),
+                    "Status Update Failed", JOptionPane.ERROR_MESSAGE);
         }
     }//GEN-LAST:event_btnUpdateStatusActionPerformed
 
@@ -264,23 +259,40 @@ public class AdminOrdersFrame extends javax.swing.JFrame {
         selectedOrderId = -1;
         tblOrders.clearSelection();
         ((DefaultTableModel) tblOrderItems.getModel()).setRowCount(0);
-        cmbStatus.setSelectedItem("Pending");
+        cmbStatus.setSelectedIndex(0);
         btnUpdateStatus.setEnabled(false);
+        lblCurrentStatus.setText("Select an order above");
     }
 
-    public static void main(String args[]) {
+    public static void main(String[] args) {
         java.awt.EventQueue.invokeLater(() -> new AdminOrdersFrame().setVisible(true));
+    }
+
+    /** Renders the Status column with AppTheme colours. */
+    private static class StatusCellRenderer extends DefaultTableCellRenderer {
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected,
+                boolean hasFocus, int row, int column) {
+            super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+            if (!isSelected && value != null) {
+                setForeground(AppTheme.statusColor(value.toString()));
+                setFont(AppTheme.FONT_SUBHEAD);
+            }
+            return this;
+        }
     }
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JButton   btnBack;
     private javax.swing.JButton   btnUpdateStatus;
+    private javax.swing.JButton   btnRefresh;
     private javax.swing.JComboBox<String> cmbStatus;
     private javax.swing.JScrollPane jScrollPane1;
     private javax.swing.JScrollPane jScrollPane2;
     private javax.swing.JLabel    lblOrderItems;
     private javax.swing.JLabel    lblStatus;
     private javax.swing.JLabel    lblTitle;
+    private javax.swing.JLabel    lblCurrentStatus;
     private javax.swing.JTable    tblOrderItems;
     private javax.swing.JTable    tblOrders;
     // End of variables declaration//GEN-END:variables

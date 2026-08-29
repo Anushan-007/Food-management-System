@@ -15,147 +15,158 @@ public class CustomerLoginFrame extends javax.swing.JFrame {
     public CustomerLoginFrame() {
         initComponents();
         setTitle("City Bites - Customer Login");
-        setSize(600, 450);
+        setMinimumSize(new Dimension(520, 500));
+        setSize(580, 540);
         setLocationRelativeTo(null);
-        setResizable(false);
+        setResizable(true);
     }
 
     @SuppressWarnings("unchecked")
     // <editor-fold defaultstate="collapsed" desc="Generated Code">//GEN-BEGIN:initComponents
     private void initComponents() {
-
-        lblTitle    = new javax.swing.JLabel();
-        lblSubtitle = new javax.swing.JLabel();
-        lblUsername = new javax.swing.JLabel();
         txtUsername = new javax.swing.JTextField();
-        lblPassword = new javax.swing.JLabel();
         txtPassword = new javax.swing.JPasswordField();
         btnLogin    = new javax.swing.JButton();
         btnRegister = new javax.swing.JButton();
         btnClear    = new javax.swing.JButton();
         btnBack     = new javax.swing.JButton();
+        lblUsername = new javax.swing.JLabel();
+        lblPassword = new javax.swing.JLabel();
+        lblTitle    = new javax.swing.JLabel();
+        lblSubtitle = new javax.swing.JLabel();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
 
-        lblTitle.setText("CITY BITES");
-        lblTitle.setFont(new Font("Segoe UI", Font.BOLD, 26));
-        lblTitle.setForeground(new Color(41, 128, 185));
-        lblTitle.setHorizontalAlignment(SwingConstants.CENTER);
+        // ── Header ──────────────────────────────────────────────
+        JPanel header = AppTheme.headerPanel("Customer Portal");
 
-        lblSubtitle.setText("Customer Login");
-        lblSubtitle.setFont(new Font("Segoe UI", Font.BOLD, 17));
-        lblSubtitle.setForeground(new Color(44, 62, 80));
-        lblSubtitle.setHorizontalAlignment(SwingConstants.CENTER);
+        // ── Labels ──────────────────────────────────────────────
+        lblTitle.setText("Customer Login");
+        lblTitle.setFont(AppTheme.FONT_TITLE);
+        lblTitle.setForeground(AppTheme.TEXT_PRIMARY);
+        lblTitle.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        Font labelFont = new Font("Segoe UI", Font.PLAIN, 13);
-        lblUsername.setText("Username:");
-        lblUsername.setFont(labelFont);
-        lblPassword.setText("Password:");
-        lblPassword.setFont(labelFont);
+        lblSubtitle.setText("Sign in to browse and order food");
+        lblSubtitle.setFont(AppTheme.FONT_BODY);
+        lblSubtitle.setForeground(AppTheme.TEXT_MUTED);
+        lblSubtitle.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        txtUsername.setFont(new Font("Segoe UI", Font.PLAIN, 13));
-        txtUsername.setPreferredSize(new Dimension(220, 28));
+        lblUsername.setText("Username");
+        lblUsername.setFont(AppTheme.FONT_LABEL);
+        lblUsername.setForeground(AppTheme.TEXT_PRIMARY);
 
-        txtPassword.setFont(new Font("Segoe UI", Font.PLAIN, 13));
-        txtPassword.setPreferredSize(new Dimension(220, 28));
-        txtPassword.addActionListener(evt -> btnLoginActionPerformed(evt));
+        lblPassword.setText("Password");
+        lblPassword.setFont(AppTheme.FONT_LABEL);
+        lblPassword.setForeground(AppTheme.TEXT_PRIMARY);
 
-        Dimension btnSize = new Dimension(100, 30);
+        AppTheme.styleField(txtUsername);
+        txtPassword.setFont(AppTheme.FONT_BODY);
+        txtPassword.setBorder(javax.swing.BorderFactory.createCompoundBorder(
+            javax.swing.BorderFactory.createLineBorder(AppTheme.BORDER),
+            javax.swing.BorderFactory.createEmptyBorder(4, 8, 4, 8)));
+        txtPassword.setBackground(AppTheme.BG_INPUT);
+        txtPassword.addActionListener(this::btnLoginActionPerformed);
 
-        btnLogin.setText("Login");
-        btnLogin.setFont(new Font("Segoe UI", Font.BOLD, 13));
-        btnLogin.setPreferredSize(btnSize);
+        btnLogin    = AppTheme.primaryBtn("Login");
+        btnRegister = AppTheme.successBtn("Create Account");
+        btnClear    = AppTheme.secondaryBtn("Clear");
+        btnBack     = AppTheme.secondaryBtn("Back");
+
+        btnLogin.setPreferredSize(new Dimension(200, 38));
+        btnLogin.setMaximumSize(new Dimension(200, 38));
+        btnLogin.setAlignmentX(Component.CENTER_ALIGNMENT);
+        btnRegister.setPreferredSize(new Dimension(200, 38));
+        btnRegister.setMaximumSize(new Dimension(200, 38));
+        btnRegister.setAlignmentX(Component.CENTER_ALIGNMENT);
+
         btnLogin.addActionListener(this::btnLoginActionPerformed);
-
-        btnRegister.setText("Register");
-        btnRegister.setFont(new Font("Segoe UI", Font.PLAIN, 13));
-        btnRegister.setPreferredSize(btnSize);
         btnRegister.addActionListener(this::btnRegisterActionPerformed);
-
-        btnClear.setText("Clear");
-        btnClear.setFont(new Font("Segoe UI", Font.PLAIN, 13));
-        btnClear.setPreferredSize(btnSize);
         btnClear.addActionListener(this::btnClearActionPerformed);
-
-        btnBack.setText("Back");
-        btnBack.setFont(new Font("Segoe UI", Font.PLAIN, 13));
-        btnBack.setPreferredSize(btnSize);
         btnBack.addActionListener(this::btnBackActionPerformed);
 
-        JPanel headerPanel = new JPanel();
-        headerPanel.setBackground(Color.WHITE);
-        headerPanel.setLayout(new BoxLayout(headerPanel, BoxLayout.Y_AXIS));
-        headerPanel.setBorder(BorderFactory.createEmptyBorder(30, 20, 20, 20));
-        lblTitle.setAlignmentX(Component.CENTER_ALIGNMENT);
-        lblSubtitle.setAlignmentX(Component.CENTER_ALIGNMENT);
-        headerPanel.add(lblTitle);
-        headerPanel.add(Box.createVerticalStrut(6));
-        headerPanel.add(lblSubtitle);
+        JLabel lblOr = new JLabel("New to City Bites?");
+        lblOr.setFont(AppTheme.FONT_SMALL);
+        lblOr.setForeground(AppTheme.TEXT_MUTED);
+        lblOr.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        JPanel formPanel = new JPanel(new GridBagLayout());
-        formPanel.setBackground(Color.WHITE);
-        formPanel.setBorder(BorderFactory.createEmptyBorder(10, 60, 10, 60));
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(10, 8, 10, 8);
-        gbc.fill   = GridBagConstraints.HORIZONTAL;
-        gbc.anchor = GridBagConstraints.WEST;
-        gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 0.3;
-        formPanel.add(lblUsername, gbc);
-        gbc.gridx = 1; gbc.weightx = 0.7;
-        formPanel.add(txtUsername, gbc);
-        gbc.gridx = 0; gbc.gridy = 1; gbc.weightx = 0.3;
-        formPanel.add(lblPassword, gbc);
-        gbc.gridx = 1; gbc.weightx = 0.7;
-        formPanel.add(txtPassword, gbc);
+        // ── Form ─────────────────────────────────────────────────
+        JPanel form = new JPanel(new GridBagLayout());
+        form.setBackground(AppTheme.BG_CARD);
+        GridBagConstraints c = new GridBagConstraints();
+        c.insets = new Insets(6, 0, 6, 0);
+        c.fill   = GridBagConstraints.HORIZONTAL;
+        c.anchor = GridBagConstraints.WEST;
+        c.weightx = 1;
 
-        JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 12, 20));
-        btnPanel.setBackground(Color.WHITE);
-        btnPanel.add(btnLogin);
-        btnPanel.add(btnRegister);
-        btnPanel.add(btnClear);
-        btnPanel.add(btnBack);
+        c.gridx = 0; c.gridy = 0; form.add(lblUsername, c);
+        c.gridy = 1;              form.add(txtUsername,  c);
+        c.gridy = 2;              form.add(lblPassword,  c);
+        c.gridy = 3;              form.add(txtPassword,  c);
 
-        JPanel centerPanel = new JPanel(new BorderLayout());
-        centerPanel.setBackground(Color.WHITE);
-        centerPanel.add(formPanel, BorderLayout.CENTER);
-        centerPanel.add(btnPanel,  BorderLayout.SOUTH);
+        JPanel utilRow = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
+        utilRow.setBackground(AppTheme.BG_CARD);
+        utilRow.add(btnClear);
+        utilRow.add(btnBack);
 
-        getContentPane().setBackground(Color.WHITE);
+        // ── Card ─────────────────────────────────────────────────
+        JPanel card = new JPanel();
+        card.setBackground(AppTheme.BG_CARD);
+        card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
+        card.setBorder(javax.swing.BorderFactory.createEmptyBorder(32, 60, 32, 60));
+        card.add(lblTitle);
+        card.add(Box.createVerticalStrut(6));
+        card.add(lblSubtitle);
+        card.add(Box.createVerticalStrut(26));
+        card.add(form);
+        card.add(Box.createVerticalStrut(6));
+        card.add(utilRow);
+        card.add(Box.createVerticalStrut(14));
+        card.add(btnLogin);
+        card.add(Box.createVerticalStrut(18));
+        card.add(lblOr);
+        card.add(Box.createVerticalStrut(8));
+        card.add(btnRegister);
+        card.add(Box.createVerticalGlue());
+
+        getContentPane().setBackground(AppTheme.BG_MAIN);
         getContentPane().setLayout(new BorderLayout());
-        getContentPane().add(headerPanel, BorderLayout.NORTH);
-        getContentPane().add(centerPanel, BorderLayout.CENTER);
+        getContentPane().add(header, BorderLayout.NORTH);
 
+        JPanel center = new JPanel(new GridBagLayout());
+        center.setBackground(AppTheme.BG_MAIN);
+        center.setBorder(javax.swing.BorderFactory.createEmptyBorder(20, 60, 20, 60));
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.fill = GridBagConstraints.BOTH;
+        gbc.weightx = 1; gbc.weighty = 1;
+        center.add(card, gbc);
+        getContentPane().add(center, BorderLayout.CENTER);
+
+        getRootPane().setDefaultButton(btnLogin);
     }// </editor-fold>//GEN-END:initComponents
 
     private void btnLoginActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnLoginActionPerformed
         String username = txtUsername.getText().trim();
         String password = new String(txtPassword.getPassword());
-
         if (username.isEmpty() || password.isEmpty()) {
-            JOptionPane.showMessageDialog(this,
-                    "Please enter username and password.",
+            JOptionPane.showMessageDialog(this, "Please enter username and password.",
                     "Validation Error", JOptionPane.WARNING_MESSAGE);
             return;
         }
-
         try {
             Optional<Customer> result = AuthService.customerLogin(username, password);
             if (result.isPresent()) {
                 SessionManager.setLoggedInCustomer(result.get());
-                JOptionPane.showMessageDialog(this,
-                        "Login successful!", "Success", JOptionPane.INFORMATION_MESSAGE);
+                logger.info("Customer login: " + username);
                 new CustomerDashboardFrame().setVisible(true);
                 dispose();
             } else {
-                JOptionPane.showMessageDialog(this,
-                        "Invalid username or password.",
+                JOptionPane.showMessageDialog(this, "Invalid username or password.",
                         "Login Failed", JOptionPane.ERROR_MESSAGE);
                 txtPassword.setText("");
                 txtPassword.requestFocus();
             }
         } catch (Exception e) {
-            JOptionPane.showMessageDialog(this,
-                    "Database error: " + e.getMessage(),
+            JOptionPane.showMessageDialog(this, "Database error: " + e.getMessage(),
                     "Error", JOptionPane.ERROR_MESSAGE);
         }
     }//GEN-LAST:event_btnLoginActionPerformed
@@ -176,20 +187,20 @@ public class CustomerLoginFrame extends javax.swing.JFrame {
         dispose();
     }//GEN-LAST:event_btnRegisterActionPerformed
 
-    public static void main(String args[]) {
+    public static void main(String[] args) {
         java.awt.EventQueue.invokeLater(() -> new CustomerLoginFrame().setVisible(true));
     }
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
-    private javax.swing.JButton btnBack;
-    private javax.swing.JButton btnClear;
-    private javax.swing.JButton btnLogin;
-    private javax.swing.JButton btnRegister;
-    private javax.swing.JLabel  lblPassword;
-    private javax.swing.JLabel  lblSubtitle;
-    private javax.swing.JLabel  lblTitle;
-    private javax.swing.JLabel  lblUsername;
+    private javax.swing.JButton    btnLogin;
+    private javax.swing.JButton    btnRegister;
+    private javax.swing.JButton    btnClear;
+    private javax.swing.JButton    btnBack;
+    private javax.swing.JTextField txtUsername;
     private javax.swing.JPasswordField txtPassword;
-    private javax.swing.JTextField     txtUsername;
+    private javax.swing.JLabel     lblUsername;
+    private javax.swing.JLabel     lblPassword;
+    private javax.swing.JLabel     lblTitle;
+    private javax.swing.JLabel     lblSubtitle;
     // End of variables declaration//GEN-END:variables
 }

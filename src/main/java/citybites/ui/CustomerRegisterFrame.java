@@ -12,15 +12,15 @@ public class CustomerRegisterFrame extends javax.swing.JFrame {
     public CustomerRegisterFrame() {
         initComponents();
         setTitle("City Bites - Customer Registration");
-        setSize(700, 600);
+        setMinimumSize(new Dimension(560, 560));
+        setSize(620, 600);
         setLocationRelativeTo(null);
-        setResizable(false);
+        setResizable(true);
     }
 
     @SuppressWarnings("unchecked")
     // <editor-fold defaultstate="collapsed" desc="Generated Code">//GEN-BEGIN:initComponents
     private void initComponents() {
-
         lblTitle           = new javax.swing.JLabel();
         lblFullName        = new javax.swing.JLabel();
         txtFullName        = new javax.swing.JTextField();
@@ -36,80 +36,102 @@ public class CustomerRegisterFrame extends javax.swing.JFrame {
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
 
+        // ── Header ──────────────────────────────────────────────
+        JPanel header = AppTheme.headerPanel("Create Account");
+
+        // ── Title ───────────────────────────────────────────────
         lblTitle.setText("Customer Registration");
-        lblTitle.setFont(new Font("Segoe UI", Font.BOLD, 22));
-        lblTitle.setForeground(new Color(44, 62, 80));
-        lblTitle.setHorizontalAlignment(SwingConstants.CENTER);
+        lblTitle.setFont(AppTheme.FONT_TITLE);
+        lblTitle.setForeground(AppTheme.TEXT_PRIMARY);
+        lblTitle.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        Font labelFont = new Font("Segoe UI", Font.PLAIN, 13);
-        lblFullName.setText("Full Name:");        lblFullName.setFont(labelFont);
-        lblUsername.setText("Username:");         lblUsername.setFont(labelFont);
-        lblPassword.setText("Password:");         lblPassword.setFont(labelFont);
-        jLabel1.setText("Confirm Password:");     jLabel1.setFont(labelFont);
+        JLabel lblSubtitle = new JLabel("Fill in your details to get started");
+        lblSubtitle.setFont(AppTheme.FONT_BODY);
+        lblSubtitle.setForeground(AppTheme.TEXT_MUTED);
+        lblSubtitle.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        Font fieldFont   = new Font("Segoe UI", Font.PLAIN, 13);
-        Dimension fieldSize = new Dimension(250, 28);
-        txtFullName.setFont(fieldFont);        txtFullName.setPreferredSize(fieldSize);
-        txtUsername.setFont(fieldFont);        txtUsername.setPreferredSize(fieldSize);
-        txtPassword.setFont(fieldFont);        txtPassword.setPreferredSize(fieldSize);
-        txtConfirmPassword.setFont(fieldFont); txtConfirmPassword.setPreferredSize(fieldSize);
+        // ── Field labels ─────────────────────────────────────────
+        lblFullName.setText("Full Name");     lblFullName.setFont(AppTheme.FONT_LABEL); lblFullName.setForeground(AppTheme.TEXT_PRIMARY);
+        lblUsername.setText("Username");      lblUsername.setFont(AppTheme.FONT_LABEL); lblUsername.setForeground(AppTheme.TEXT_PRIMARY);
+        lblPassword.setText("Password");      lblPassword.setFont(AppTheme.FONT_LABEL); lblPassword.setForeground(AppTheme.TEXT_PRIMARY);
+        jLabel1.setText("Confirm Password");  jLabel1.setFont(AppTheme.FONT_LABEL);     jLabel1.setForeground(AppTheme.TEXT_PRIMARY);
 
-        Dimension btnSize = new Dimension(110, 32);
-        btnRegister.setText("Register");
-        btnRegister.setFont(new Font("Segoe UI", Font.BOLD, 13));
-        btnRegister.setPreferredSize(btnSize);
+        // ── Fields ───────────────────────────────────────────────
+        AppTheme.styleField(txtFullName);
+        AppTheme.styleField(txtUsername);
+        for (javax.swing.JPasswordField pf : new javax.swing.JPasswordField[]{txtPassword, txtConfirmPassword}) {
+            pf.setFont(AppTheme.FONT_BODY);
+            pf.setBorder(javax.swing.BorderFactory.createCompoundBorder(
+                javax.swing.BorderFactory.createLineBorder(AppTheme.BORDER),
+                javax.swing.BorderFactory.createEmptyBorder(4, 8, 4, 8)));
+            pf.setBackground(AppTheme.BG_INPUT);
+        }
+
+        // ── Buttons ──────────────────────────────────────────────
+        btnRegister = AppTheme.primaryBtn("Register");
+        btnRegister.setPreferredSize(new Dimension(200, 38));
+        btnRegister.setMaximumSize(new Dimension(200, 38));
+        btnRegister.setAlignmentX(Component.CENTER_ALIGNMENT);
         btnRegister.addActionListener(this::btnRegisterActionPerformed);
 
-        btnClear.setText("Clear");
-        btnClear.setFont(new Font("Segoe UI", Font.PLAIN, 13));
-        btnClear.setPreferredSize(btnSize);
+        btnClear = AppTheme.secondaryBtn("Clear");
+        btnBack  = AppTheme.secondaryBtn("Back");
         btnClear.addActionListener(this::btnClearActionPerformed);
-
-        btnBack.setText("Back");
-        btnBack.setFont(new Font("Segoe UI", Font.PLAIN, 13));
-        btnBack.setPreferredSize(btnSize);
         btnBack.addActionListener(this::btnBackActionPerformed);
 
-        JPanel headerPanel = new JPanel();
-        headerPanel.setBackground(Color.WHITE);
-        headerPanel.setLayout(new BoxLayout(headerPanel, BoxLayout.Y_AXIS));
-        headerPanel.setBorder(BorderFactory.createEmptyBorder(35, 20, 20, 20));
-        lblTitle.setAlignmentX(Component.CENTER_ALIGNMENT);
-        headerPanel.add(lblTitle);
+        // ── Form grid ────────────────────────────────────────────
+        JPanel form = new JPanel(new GridBagLayout());
+        form.setBackground(AppTheme.BG_CARD);
+        GridBagConstraints c = new GridBagConstraints();
+        c.insets = new Insets(6, 0, 6, 0);
+        c.fill   = GridBagConstraints.HORIZONTAL;
+        c.anchor = GridBagConstraints.WEST;
+        c.weightx = 1;
 
-        JPanel formPanel = new JPanel(new GridBagLayout());
-        formPanel.setBackground(Color.WHITE);
-        formPanel.setBorder(BorderFactory.createEmptyBorder(20, 80, 20, 80));
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(12, 8, 12, 8);
-        gbc.fill   = GridBagConstraints.HORIZONTAL;
-        gbc.anchor = GridBagConstraints.WEST;
+        c.gridx = 0; c.gridy = 0; form.add(lblFullName, c);
+        c.gridy = 1;              form.add(txtFullName,  c);
+        c.gridy = 2;              form.add(lblUsername,  c);
+        c.gridy = 3;              form.add(txtUsername,  c);
+        c.gridy = 4;              form.add(lblPassword,  c);
+        c.gridy = 5;              form.add(txtPassword,  c);
+        c.gridy = 6;              form.add(jLabel1,      c);
+        c.gridy = 7;              form.add(txtConfirmPassword, c);
 
-        gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 0.35; formPanel.add(lblFullName, gbc);
-        gbc.gridx = 1; gbc.weightx = 0.65;                 formPanel.add(txtFullName, gbc);
-        gbc.gridx = 0; gbc.gridy = 1; gbc.weightx = 0.35; formPanel.add(lblUsername, gbc);
-        gbc.gridx = 1; gbc.weightx = 0.65;                 formPanel.add(txtUsername, gbc);
-        gbc.gridx = 0; gbc.gridy = 2; gbc.weightx = 0.35; formPanel.add(lblPassword, gbc);
-        gbc.gridx = 1; gbc.weightx = 0.65;                 formPanel.add(txtPassword, gbc);
-        gbc.gridx = 0; gbc.gridy = 3; gbc.weightx = 0.35; formPanel.add(jLabel1, gbc);
-        gbc.gridx = 1; gbc.weightx = 0.65;                 formPanel.add(txtConfirmPassword, gbc);
+        JPanel utilRow = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
+        utilRow.setBackground(AppTheme.BG_CARD);
+        utilRow.add(btnClear);
+        utilRow.add(btnBack);
 
-        JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 15, 25));
-        btnPanel.setBackground(Color.WHITE);
-        btnPanel.add(btnRegister);
-        btnPanel.add(btnClear);
-        btnPanel.add(btnBack);
+        // ── Card ─────────────────────────────────────────────────
+        JPanel card = new JPanel();
+        card.setBackground(AppTheme.BG_CARD);
+        card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
+        card.setBorder(javax.swing.BorderFactory.createEmptyBorder(28, 60, 28, 60));
+        card.add(lblTitle);
+        card.add(Box.createVerticalStrut(6));
+        card.add(lblSubtitle);
+        card.add(Box.createVerticalStrut(22));
+        card.add(form);
+        card.add(Box.createVerticalStrut(6));
+        card.add(utilRow);
+        card.add(Box.createVerticalStrut(16));
+        card.add(btnRegister);
+        card.add(Box.createVerticalGlue());
 
-        JPanel centerPanel = new JPanel(new BorderLayout());
-        centerPanel.setBackground(Color.WHITE);
-        centerPanel.add(formPanel, BorderLayout.CENTER);
-        centerPanel.add(btnPanel,  BorderLayout.SOUTH);
-
-        getContentPane().setBackground(Color.WHITE);
+        getContentPane().setBackground(AppTheme.BG_MAIN);
         getContentPane().setLayout(new BorderLayout());
-        getContentPane().add(headerPanel, BorderLayout.NORTH);
-        getContentPane().add(centerPanel, BorderLayout.CENTER);
+        getContentPane().add(header, BorderLayout.NORTH);
 
+        JPanel center = new JPanel(new GridBagLayout());
+        center.setBackground(AppTheme.BG_MAIN);
+        center.setBorder(javax.swing.BorderFactory.createEmptyBorder(16, 60, 16, 60));
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.fill = GridBagConstraints.BOTH;
+        gbc.weightx = 1; gbc.weighty = 1;
+        center.add(card, gbc);
+        getContentPane().add(center, BorderLayout.CENTER);
+
+        getRootPane().setDefaultButton(btnRegister);
     }// </editor-fold>//GEN-END:initComponents
 
     private void btnRegisterActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnRegisterActionPerformed
@@ -124,32 +146,25 @@ public class CustomerRegisterFrame extends javax.swing.JFrame {
             return;
         }
         if (fullName.length() < 3) {
-            JOptionPane.showMessageDialog(this,
-                    "Full name must contain at least 3 characters.",
+            JOptionPane.showMessageDialog(this, "Full name must be at least 3 characters.",
                     "Validation Error", JOptionPane.WARNING_MESSAGE);
-            txtFullName.requestFocus();
-            return;
+            txtFullName.requestFocus(); return;
         }
         if (username.length() < 4) {
-            JOptionPane.showMessageDialog(this,
-                    "Username must contain at least 4 characters.",
+            JOptionPane.showMessageDialog(this, "Username must be at least 4 characters.",
                     "Validation Error", JOptionPane.WARNING_MESSAGE);
-            txtUsername.requestFocus();
-            return;
+            txtUsername.requestFocus(); return;
         }
         if (password.length() < 4) {
-            JOptionPane.showMessageDialog(this,
-                    "Password must contain at least 4 characters.",
+            JOptionPane.showMessageDialog(this, "Password must be at least 4 characters.",
                     "Validation Error", JOptionPane.WARNING_MESSAGE);
-            txtPassword.requestFocus();
-            return;
+            txtPassword.requestFocus(); return;
         }
         if (!password.equals(confirmPassword)) {
             JOptionPane.showMessageDialog(this, "Passwords do not match.",
                     "Validation Error", JOptionPane.WARNING_MESSAGE);
             txtConfirmPassword.setText("");
-            txtConfirmPassword.requestFocus();
-            return;
+            txtConfirmPassword.requestFocus(); return;
         }
 
         try {
@@ -179,19 +194,19 @@ public class CustomerRegisterFrame extends javax.swing.JFrame {
         dispose();
     }//GEN-LAST:event_btnBackActionPerformed
 
-    public static void main(String args[]) {
+    public static void main(String[] args) {
         java.awt.EventQueue.invokeLater(() -> new CustomerRegisterFrame().setVisible(true));
     }
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
-    private javax.swing.JButton btnBack;
-    private javax.swing.JButton btnClear;
-    private javax.swing.JButton btnRegister;
-    private javax.swing.JLabel  jLabel1;
-    private javax.swing.JLabel  lblFullName;
-    private javax.swing.JLabel  lblPassword;
-    private javax.swing.JLabel  lblTitle;
-    private javax.swing.JLabel  lblUsername;
+    private javax.swing.JButton    btnRegister;
+    private javax.swing.JButton    btnClear;
+    private javax.swing.JButton    btnBack;
+    private javax.swing.JLabel     jLabel1;
+    private javax.swing.JLabel     lblFullName;
+    private javax.swing.JLabel     lblPassword;
+    private javax.swing.JLabel     lblTitle;
+    private javax.swing.JLabel     lblUsername;
     private javax.swing.JPasswordField txtConfirmPassword;
     private javax.swing.JTextField     txtFullName;
     private javax.swing.JPasswordField txtPassword;

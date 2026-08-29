@@ -18,7 +18,8 @@ public class CustomerDAOImpl implements CustomerDAO {
     @Override
     public boolean insert(String fullName, String username, String passwordHash) {
         String sql = "INSERT INTO customers (full_name, username, password_hash) VALUES (?, ?, ?)";
-        try (PreparedStatement ps = DatabaseConnection.get().prepareStatement(sql)) {
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, fullName);
             ps.setString(2, username);
             ps.setString(3, passwordHash);
@@ -33,17 +34,16 @@ public class CustomerDAOImpl implements CustomerDAO {
     public Optional<Customer> findByUsername(String username) {
         String sql = "SELECT customer_id, full_name, username, password_hash " +
                      "FROM customers WHERE LOWER(username) = LOWER(?)";
-        try (PreparedStatement ps = DatabaseConnection.get().prepareStatement(sql)) {
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, username);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
-                    Customer c = new Customer(
+                    return Optional.of(new Customer(
                             rs.getInt("customer_id"),
                             rs.getString("full_name"),
                             rs.getString("username"),
-                            rs.getString("password_hash")
-                    );
-                    return Optional.of(c);
+                            rs.getString("password_hash")));
                 }
             }
         } catch (SQLException e) {
@@ -54,15 +54,30 @@ public class CustomerDAOImpl implements CustomerDAO {
 
     @Override
     public boolean usernameExists(String username) {
-        String sql = "SELECT 1 FROM customers WHERE LOWER(username) = LOWER(?) LIMIT 1";
-        try (PreparedStatement ps = DatabaseConnection.get().prepareStatement(sql)) {
+        String sql = "SELECT COUNT(*) FROM customers WHERE LOWER(username) = LOWER(?)";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, username);
             try (ResultSet rs = ps.executeQuery()) {
-                return rs.next();
+                rs.next();
+                return rs.getInt(1) > 0;
             }
         } catch (SQLException e) {
             logger.log(Level.SEVERE, "CustomerDAO.usernameExists failed.", e);
         }
         return false;
+    }
+
+    @Override
+    public int countAll() {
+        String sql = "SELECT COUNT(*) FROM customers";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            if (rs.next()) return rs.getInt(1);
+        } catch (SQLException e) {
+            logger.log(Level.SEVERE, "CustomerDAO.countAll failed.", e);
+        }
+        return 0;
     }
 }

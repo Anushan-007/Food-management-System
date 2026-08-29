@@ -20,16 +20,16 @@ public class CartFrame extends javax.swing.JFrame {
     public CartFrame() {
         initComponents();
         setTitle("City Bites - Shopping Cart");
+        setMinimumSize(new Dimension(860, 580));
         setSize(950, 650);
         setLocationRelativeTo(null);
-        setResizable(false);
+        setResizable(true);
 
         spnQuantity.setModel(new SpinnerNumberModel(1, 1, 100, 1));
         btnUpdate.setEnabled(false);
         btnRemove.setEnabled(false);
 
-        applyTableStyle(tblCart);
-
+        AppTheme.styleTable(tblCart);
         tblCart.getColumnModel().getColumn(0).setPreferredWidth(60);
         tblCart.getColumnModel().getColumn(1).setPreferredWidth(330);
         tblCart.getColumnModel().getColumn(2).setPreferredWidth(120);
@@ -40,37 +40,6 @@ public class CartFrame extends javax.swing.JFrame {
 
         tblCart.getSelectionModel().addListSelectionListener(event -> {
             if (!event.getValueIsAdjusting()) selectCartItem();
-        });
-    }
-
-    private void applyTableStyle(JTable table) {
-        table.setFont(new Font("Segoe UI", Font.PLAIN, 13));
-        table.setRowHeight(24);
-        table.setGridColor(new Color(220, 225, 230));
-        table.setSelectionBackground(new Color(210, 228, 248));
-        table.setSelectionForeground(new Color(30, 30, 30));
-        table.getTableHeader().setReorderingAllowed(false);
-        table.setFillsViewportHeight(true);
-        table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-
-        table.getTableHeader().setDefaultRenderer(
-                new javax.swing.table.DefaultTableCellRenderer() {
-            {
-                setOpaque(true);
-                setBackground(new Color(52, 73, 94));
-                setForeground(Color.WHITE);
-                setFont(new Font("Segoe UI", Font.BOLD, 13));
-                setBorder(BorderFactory.createCompoundBorder(
-                        BorderFactory.createMatteBorder(0, 0, 0, 1, new Color(80, 100, 120)),
-                        BorderFactory.createEmptyBorder(4, 8, 4, 8)));
-            }
-            @Override
-            public Component getTableCellRendererComponent(
-                    JTable tbl, Object value, boolean isSelected,
-                    boolean hasFocus, int row, int column) {
-                setText(value != null ? value.toString() : "");
-                return this;
-            }
         });
     }
 
@@ -93,10 +62,10 @@ public class CartFrame extends javax.swing.JFrame {
     }
 
     private void selectCartItem() {
-        int selectedRow = tblCart.getSelectedRow();
-        if (selectedRow == -1) return;
-        selectedFoodId = Integer.parseInt(tblCart.getValueAt(selectedRow, 0).toString());
-        int quantity   = Integer.parseInt(tblCart.getValueAt(selectedRow, 3).toString());
+        int row = tblCart.getSelectedRow();
+        if (row == -1) return;
+        selectedFoodId = Integer.parseInt(tblCart.getValueAt(row, 0).toString());
+        int quantity   = Integer.parseInt(tblCart.getValueAt(row, 3).toString());
         spnQuantity.setValue(quantity);
         btnUpdate.setEnabled(true);
         btnRemove.setEnabled(true);
@@ -113,7 +82,6 @@ public class CartFrame extends javax.swing.JFrame {
     @SuppressWarnings("unchecked")
     // <editor-fold defaultstate="collapsed" desc="Generated Code">//GEN-BEGIN:initComponents
     private void initComponents() {
-
         lblTitle        = new javax.swing.JLabel();
         jScrollPane1    = new javax.swing.JScrollPane();
         tblCart         = new javax.swing.JTable();
@@ -129,10 +97,10 @@ public class CartFrame extends javax.swing.JFrame {
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
 
-        lblTitle.setText("Shopping Cart");
-        lblTitle.setFont(new Font("Segoe UI", Font.BOLD, 22));
-        lblTitle.setForeground(new Color(44, 62, 80));
+        // ── Header ───────────────────────────────────────────────
+        JPanel header = AppTheme.headerPanel("Shopping Cart");
 
+        // ── Table ────────────────────────────────────────────────
         tblCart.setModel(new javax.swing.table.DefaultTableModel(
                 new Object[][]{},
                 new String[]{"ID", "Food Name", "Unit Price", "Quantity", "Subtotal"}
@@ -140,92 +108,83 @@ public class CartFrame extends javax.swing.JFrame {
             @Override public boolean isCellEditable(int row, int column) { return false; }
         });
         jScrollPane1.setViewportView(tblCart);
-        jScrollPane1.setBorder(BorderFactory.createLineBorder(new Color(200, 210, 220)));
+        jScrollPane1.setBorder(javax.swing.BorderFactory.createLineBorder(AppTheme.BORDER));
 
+        // ── Labels ───────────────────────────────────────────────
         lblQuantity.setText("Qty:");
-        lblQuantity.setFont(new Font("Segoe UI", Font.PLAIN, 13));
-        spnQuantity.setPreferredSize(new Dimension(75, 26));
+        lblQuantity.setFont(AppTheme.FONT_BODY);
+        lblQuantity.setForeground(AppTheme.TEXT_PRIMARY);
+        spnQuantity.setPreferredSize(new Dimension(75, 28));
 
         lblTotalTitle.setText("Total:");
-        lblTotalTitle.setFont(new Font("Segoe UI", Font.BOLD, 14));
-        lblTotalTitle.setForeground(new Color(44, 62, 80));
+        lblTotalTitle.setFont(AppTheme.FONT_SUBHEAD);
+        lblTotalTitle.setForeground(AppTheme.TEXT_PRIMARY);
 
         lblTotal.setText("Rs. 0.00");
-        lblTotal.setFont(new Font("Segoe UI", Font.BOLD, 16));
-        lblTotal.setForeground(new Color(39, 174, 96));
+        lblTotal.setFont(new Font("Segoe UI", Font.BOLD, 18));
+        lblTotal.setForeground(AppTheme.SUCCESS);
 
-        Font btnFont = new Font("Segoe UI", Font.PLAIN, 13);
-        Dimension btn = new Dimension(120, 30);
+        // ── Buttons ──────────────────────────────────────────────
+        btnUpdate       = AppTheme.secondaryBtn("Update Qty");
+        btnRemove       = AppTheme.dangerBtn("Remove");
+        btnClearCart    = AppTheme.secondaryBtn("Clear Cart");
+        btnConfirmOrder = AppTheme.successBtn("Confirm Order");
+        btnBack         = AppTheme.secondaryBtn("Back");
 
-        btnUpdate.setText("Update Quantity"); btnUpdate.setFont(btnFont); btnUpdate.setPreferredSize(btn);
-        btnUpdate.addActionListener(this::btnUpdateActionPerformed);
-
-        btnRemove.setText("Remove Item");     btnRemove.setFont(btnFont); btnRemove.setPreferredSize(btn);
-        btnRemove.addActionListener(this::btnRemoveActionPerformed);
-
-        btnClearCart.setText("Clear Cart");
-        btnClearCart.setFont(btnFont);
-        btnClearCart.setPreferredSize(new Dimension(100, 30));
-        btnClearCart.addActionListener(this::btnClearCartActionPerformed);
-
-        btnConfirmOrder.setText("Confirm Order");
-        btnConfirmOrder.setFont(new Font("Segoe UI", Font.BOLD, 13));
-        btnConfirmOrder.setPreferredSize(new Dimension(130, 30));
-        btnConfirmOrder.addActionListener(this::btnConfirmOrderActionPerformed);
-
-        btnBack.setText("Back");
-        btnBack.setFont(btnFont);
+        for (JButton b : new JButton[]{btnUpdate, btnRemove, btnClearCart}) {
+            b.setPreferredSize(new Dimension(110, 30));
+        }
+        btnConfirmOrder.setPreferredSize(new Dimension(140, 32));
         btnBack.setPreferredSize(new Dimension(90, 30));
+
+        btnUpdate.addActionListener(this::btnUpdateActionPerformed);
+        btnRemove.addActionListener(this::btnRemoveActionPerformed);
+        btnClearCart.addActionListener(this::btnClearCartActionPerformed);
+        btnConfirmOrder.addActionListener(this::btnConfirmOrderActionPerformed);
         btnBack.addActionListener(this::btnBackActionPerformed);
 
-        JPanel headerPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 18, 14));
-        headerPanel.setBackground(Color.WHITE);
-        headerPanel.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(200, 210, 220)));
-        headerPanel.add(lblTitle);
-
+        // ── Table panel ──────────────────────────────────────────
         JPanel tablePanel = new JPanel(new BorderLayout());
-        tablePanel.setBackground(Color.WHITE);
-        tablePanel.setBorder(BorderFactory.createEmptyBorder(14, 18, 10, 18));
+        tablePanel.setBackground(AppTheme.BG_CARD);
+        tablePanel.setBorder(javax.swing.BorderFactory.createEmptyBorder(14, 18, 10, 18));
         tablePanel.add(jScrollPane1, BorderLayout.CENTER);
 
-        JPanel row1 = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 10));
-        row1.setBackground(new Color(245, 246, 248));
-        row1.add(lblQuantity); row1.add(spnQuantity);
-        row1.add(Box.createHorizontalStrut(6));
-        row1.add(btnUpdate); row1.add(btnRemove); row1.add(btnClearCart);
-        row1.add(Box.createHorizontalStrut(20));
-        row1.add(lblTotalTitle); row1.add(lblTotal);
+        // ── Bottom: qty/edit row + total/confirm row ─────────────
+        JPanel editRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 10));
+        editRow.setBackground(AppTheme.BG_FOOTER);
+        editRow.add(lblQuantity); editRow.add(spnQuantity);
+        editRow.add(Box.createHorizontalStrut(6));
+        editRow.add(btnUpdate); editRow.add(btnRemove); editRow.add(btnClearCart);
 
-        JPanel row2 = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 8));
-        row2.setBackground(new Color(245, 246, 248));
-        row2.add(btnConfirmOrder);
-        row2.add(Box.createHorizontalStrut(10));
-        row2.add(btnBack);
+        JPanel totalRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 8));
+        totalRow.setBackground(AppTheme.BG_FOOTER);
+        totalRow.add(lblTotalTitle); totalRow.add(lblTotal);
+        totalRow.add(Box.createHorizontalStrut(30));
+        totalRow.add(btnConfirmOrder);
+        totalRow.add(Box.createHorizontalStrut(10));
+        totalRow.add(btnBack);
 
         JPanel bottomPanel = new JPanel(new BorderLayout());
-        bottomPanel.setBackground(new Color(245, 246, 248));
-        bottomPanel.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(200, 210, 220)));
-        bottomPanel.add(row1, BorderLayout.NORTH);
-        bottomPanel.add(row2, BorderLayout.CENTER);
+        bottomPanel.setBackground(AppTheme.BG_FOOTER);
+        bottomPanel.setBorder(AppTheme.footerBorder());
+        bottomPanel.add(editRow, BorderLayout.NORTH);
+        bottomPanel.add(totalRow, BorderLayout.CENTER);
 
-        getContentPane().setBackground(Color.WHITE);
+        getContentPane().setBackground(AppTheme.BG_MAIN);
         getContentPane().setLayout(new BorderLayout());
-        getContentPane().add(headerPanel, BorderLayout.NORTH);
+        getContentPane().add(header,      BorderLayout.NORTH);
         getContentPane().add(tablePanel,  BorderLayout.CENTER);
         getContentPane().add(bottomPanel, BorderLayout.SOUTH);
-
     }// </editor-fold>//GEN-END:initComponents
 
     private void btnUpdateActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnUpdateActionPerformed
         if (selectedFoodId == -1) {
-            JOptionPane.showMessageDialog(this, "Please select a cart item.");
-            return;
+            JOptionPane.showMessageDialog(this, "Please select a cart item."); return;
         }
         int quantity = (Integer) spnQuantity.getValue();
         for (CartItem item : DataStore.cartItems) {
             if (item.getFoodItem().getFoodId() == selectedFoodId) {
-                item.setQuantity(quantity);
-                break;
+                item.setQuantity(quantity); break;
             }
         }
         JOptionPane.showMessageDialog(this, "Quantity updated successfully!");
@@ -235,12 +194,11 @@ public class CartFrame extends javax.swing.JFrame {
 
     private void btnRemoveActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnRemoveActionPerformed
         if (selectedFoodId == -1) {
-            JOptionPane.showMessageDialog(this, "Please select an item to remove.");
-            return;
+            JOptionPane.showMessageDialog(this, "Please select an item to remove."); return;
         }
-        int response = JOptionPane.showConfirmDialog(this,
-                "Remove this item from the cart?", "Confirm Remove", JOptionPane.YES_NO_OPTION);
-        if (response == JOptionPane.YES_OPTION) {
+        int r = JOptionPane.showConfirmDialog(this, "Remove this item from the cart?",
+                "Confirm Remove", JOptionPane.YES_NO_OPTION);
+        if (r == JOptionPane.YES_OPTION) {
             DataStore.cartItems.removeIf(item -> item.getFoodItem().getFoodId() == selectedFoodId);
             loadCartTable();
             resetSelection();
@@ -250,12 +208,11 @@ public class CartFrame extends javax.swing.JFrame {
 
     private void btnClearCartActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnClearCartActionPerformed
         if (DataStore.cartItems.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "The cart is already empty.");
-            return;
+            JOptionPane.showMessageDialog(this, "The cart is already empty."); return;
         }
-        int response = JOptionPane.showConfirmDialog(this,
-                "Remove all items from the cart?", "Confirm Clear Cart", JOptionPane.YES_NO_OPTION);
-        if (response == JOptionPane.YES_OPTION) {
+        int r = JOptionPane.showConfirmDialog(this, "Remove all items from the cart?",
+                "Confirm Clear Cart", JOptionPane.YES_NO_OPTION);
+        if (r == JOptionPane.YES_OPTION) {
             DataStore.cartItems.clear();
             loadCartTable();
             resetSelection();
@@ -266,39 +223,30 @@ public class CartFrame extends javax.swing.JFrame {
     private void btnConfirmOrderActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnConfirmOrderActionPerformed
         if (DataStore.cartItems.isEmpty()) {
             JOptionPane.showMessageDialog(this, "Your cart is empty.",
-                    "Empty Cart", JOptionPane.WARNING_MESSAGE);
-            return;
+                    "Empty Cart", JOptionPane.WARNING_MESSAGE); return;
         }
         Customer customer = SessionManager.getLoggedInCustomer();
         if (customer == null) {
-            JOptionPane.showMessageDialog(this,
-                    "Please login before confirming the order.",
+            JOptionPane.showMessageDialog(this, "Please login before confirming the order.",
                     "Login Required", JOptionPane.WARNING_MESSAGE);
-            new CustomerLoginFrame().setVisible(true);
-            dispose();
-            return;
+            new CustomerLoginFrame().setVisible(true); dispose(); return;
         }
-
-        double totalAmount = DataStore.cartItems.stream()
-                .mapToDouble(CartItem::getSubtotal).sum();
-
-        int response = JOptionPane.showConfirmDialog(this,
+        double totalAmount = DataStore.cartItems.stream().mapToDouble(CartItem::getSubtotal).sum();
+        int r = JOptionPane.showConfirmDialog(this,
                 "Confirm this order?\nTotal Amount: Rs. " + String.format("%.2f", totalAmount),
                 "Confirm Order", JOptionPane.YES_NO_OPTION);
-        if (response != JOptionPane.YES_OPTION) return;
+        if (r != JOptionPane.YES_OPTION) return;
 
         try {
             Order order = OrderService.placeOrder(customer, DataStore.cartItems);
             DataStore.cartItems.clear();
             JOptionPane.showMessageDialog(this,
-                    "Order confirmed successfully!\nOrder ID: " + order.getOrderId()
+                    "Order placed successfully!\nOrder ID: " + order.getOrderId()
                     + "\nTotal: Rs. " + String.format("%.2f", order.getTotalAmount()),
                     "Order Successful", JOptionPane.INFORMATION_MESSAGE);
-            new CustomerDashboardFrame().setVisible(true);
-            dispose();
+            new CustomerDashboardFrame().setVisible(true); dispose();
         } catch (Exception e) {
-            JOptionPane.showMessageDialog(this,
-                    "Failed to place order: " + e.getMessage(),
+            JOptionPane.showMessageDialog(this, "Failed to place order: " + e.getMessage(),
                     "Order Failed", JOptionPane.ERROR_MESSAGE);
         }
     }//GEN-LAST:event_btnConfirmOrderActionPerformed
@@ -308,7 +256,7 @@ public class CartFrame extends javax.swing.JFrame {
         dispose();
     }//GEN-LAST:event_btnBackActionPerformed
 
-    public static void main(String args[]) {
+    public static void main(String[] args) {
         java.awt.EventQueue.invokeLater(() -> new CartFrame().setVisible(true));
     }
 
