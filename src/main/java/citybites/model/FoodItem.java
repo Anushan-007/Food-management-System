@@ -1,61 +1,34 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
- */
 package citybites.model;
 
-/**
- *
- * @author User
- */
 public class FoodItem {
-    
-    private int foodId;
-    private String foodName;
-    private double price;
+
+    private int     foodId;
+    private String  foodName;
+    private double  price;
     private boolean available;
+    private String  imagePath;  // optional; may be null
 
-    public FoodItem() {
-    }
+    public FoodItem() {}
 
-    public FoodItem(int foodId, String foodName,
-                    double price, boolean available) {
-        this.foodId = foodId;
-        this.foodName = foodName;
-        this.price = price;
+    public FoodItem(int foodId, String foodName, double price, boolean available) {
+        this.foodId    = foodId;
+        this.foodName  = foodName;
+        this.price     = price;
         this.available = available;
     }
 
-    public int getFoodId() {
-        return foodId;
-    }
+    public int getFoodId()              { return foodId;    }
+    public void setFoodId(int v)        { foodId = v;       }
 
-    public void setFoodId(int foodId) {
-        this.foodId = foodId;
-    }
+    public String getFoodName()         { return foodName;  }
+    public void setFoodName(String v)   { foodName = v;     }
 
-    public String getFoodName() {
-        return foodName;
-    }
+    public double getPrice()            { return price;     }
+    public void setPrice(double v)      { price = v;        }
 
-    public void setFoodName(String foodName) {
-        this.foodName = foodName;
-    }
+    public boolean isAvailable()        { return available; }
+    public void setAvailable(boolean v) { available = v;    }
 
-    public double getPrice() {
-        return price;
-    }
-
-    public void setPrice(double price) {
-        this.price = price;
-    }
-
-    public boolean isAvailable() {
-        return available;
-    }
-
-    public void setAvailable(boolean available) {
-        this.available = available;
-    }
-    
+    public String getImagePath()        { return imagePath; }
+    public void setImagePath(String v)  { imagePath = v;    }
 }
