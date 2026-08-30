@@ -48,16 +48,27 @@ public class FoodMenuFrame extends javax.swing.JFrame {
         }
     }
 
+    private static final int MAX_COLS = 5;
+
     private void renderCards() {
         cardsPanel.removeAll();
+        cardsPanel.setLayout(new BoxLayout(cardsPanel, BoxLayout.Y_AXIS));
+        cardsPanel.setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16));
         if (displayedItems.isEmpty()) {
-            cardsPanel.setLayout(new BorderLayout());
-            cardsPanel.add(AppTheme.emptyStatePanel("", "No items found",
-                    "Try a different search term"), BorderLayout.CENTER);
+            JPanel empty = AppTheme.emptyStatePanel("", "No items found",
+                    "Try a different search term");
+            empty.setAlignmentX(Component.LEFT_ALIGNMENT);
+            cardsPanel.add(empty);
         } else {
-            cardsPanel.setLayout(new WrapLayout(FlowLayout.LEFT, 16, 16));
-            for (FoodItem food : displayedItems) {
-                cardsPanel.add(buildFoodCard(food));
+            for (int i = 0; i < displayedItems.size(); i += MAX_COLS) {
+                JPanel row = new JPanel(new FlowLayout(FlowLayout.CENTER, 16, 0));
+                row.setBackground(AppTheme.BG_MAIN);
+                row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 316));
+                for (int j = i; j < Math.min(i + MAX_COLS, displayedItems.size()); j++) {
+                    row.add(buildFoodCard(displayedItems.get(j)));
+                }
+                cardsPanel.add(row);
+                cardsPanel.add(Box.createVerticalStrut(16));
             }
         }
         cardsPanel.revalidate();
@@ -214,11 +225,13 @@ public class FoodMenuFrame extends javax.swing.JFrame {
         toolbar.add(clearSearchBtn);
 
         // ── Cards scroll area ────────────────────────────────────────
-        cardsPanel = new JPanel(new WrapLayout(FlowLayout.LEFT, 16, 16));
+        cardsPanel = new JPanel();
         cardsPanel.setBackground(AppTheme.BG_MAIN);
 
         JScrollPane scroll = new JScrollPane(cardsPanel);
         scroll.setBorder(null);
+        scroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        scroll.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
         scroll.getVerticalScrollBar().setUnitIncrement(20);
         scroll.setBackground(AppTheme.BG_MAIN);
         scroll.getViewport().setBackground(AppTheme.BG_MAIN);

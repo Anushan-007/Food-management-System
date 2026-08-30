@@ -68,6 +68,8 @@ public class AdminOrdersFrame extends javax.swing.JFrame {
         tblOrders.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) orderRowSelected();
         });
+        // Hide internal ID column from view; model column 0 still accessible for status updates
+        tblOrders.getColumnModel().removeColumn(tblOrders.getColumnModel().getColumn(0));
 
         JScrollPane ordersScroll = new JScrollPane(tblOrders);
         ordersScroll.setBorder(BorderFactory.createLineBorder(AppTheme.BORDER));

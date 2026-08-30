@@ -10,6 +10,7 @@ import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.filechooser.FileNameExtensionFilter;
+import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 
 public class FoodManagementFrame extends javax.swing.JFrame {
@@ -31,6 +32,11 @@ public class FoodManagementFrame extends javax.swing.JFrame {
         setLocationRelativeTo(null);
         setResizable(true);
         loadFoodTable();
+        // Recompute proportional column widths whenever the frame is shown or resized
+        addComponentListener(new java.awt.event.ComponentAdapter() {
+            @Override public void componentResized(java.awt.event.ComponentEvent e) { applyFoodTableColumnWidths(); }
+            @Override public void componentShown(java.awt.event.ComponentEvent e)   { applyFoodTableColumnWidths(); }
+        });
     }
 
     @SuppressWarnings("unchecked")
@@ -176,18 +182,64 @@ public class FoodManagementFrame extends javax.swing.JFrame {
         formScroll.setPreferredSize(new Dimension(280, 0));
 
         // ── Table panel (right) ──────────────────────────────────────
-        String[] columns = {"ID", "Name", "Price (Rs.)", "Stock", "Image"};
+        String[] columns = {"ID", "Name", "Price (Rs.)", "Stock", "Available", "Image"};
         tableModel = new DefaultTableModel(columns, 0) {
             @Override public boolean isCellEditable(int r, int c2) { return false; }
         };
         tblFood = new javax.swing.JTable(tableModel);
         AppTheme.styleTable(tblFood);
+        tblFood.setRowHeight(64);
+        // AUTO_RESIZE_OFF lets applyFoodTableColumnWidths() control proportions
+        tblFood.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
+
+        // Capture the L&F header renderer once before any per-column overrides
+        final javax.swing.table.TableCellRenderer origHdr =
+                tblFood.getTableHeader().getDefaultRenderer();
+
+        // ID — hidden; keep narrow before removal
         tblFood.getColumnModel().getColumn(0).setMaxWidth(50);
-        tblFood.getColumnModel().getColumn(2).setPreferredWidth(110);
-        tblFood.getColumnModel().getColumn(3).setPreferredWidth(80);
+
+        // ── Food Name (left / left) ───────────────────────────────────────────
+        var colName = tblFood.getColumnModel().getColumn(1);
+        colName.setMinWidth(220);
+        colName.setHeaderRenderer(headerRenderer(origHdr, SwingConstants.LEFT));
+        var nameRenderer = new DefaultTableCellRenderer();
+        nameRenderer.setHorizontalAlignment(SwingConstants.LEFT);
+        colName.setCellRenderer(nameRenderer);
+
+        // ── Price (Rs.) (right / right) ──────────────────────────────────────
+        var colPrice = tblFood.getColumnModel().getColumn(2);
+        colPrice.setMinWidth(120);
+        colPrice.setHeaderRenderer(headerRenderer(origHdr, SwingConstants.RIGHT));
+        var priceRenderer = new DefaultTableCellRenderer();
+        priceRenderer.setHorizontalAlignment(SwingConstants.RIGHT);
+        colPrice.setCellRenderer(priceRenderer);
+
+        // ── Stock (centre / centre) ───────────────────────────────────────────
+        var colStock = tblFood.getColumnModel().getColumn(3);
+        colStock.setMinWidth(80);
+        colStock.setHeaderRenderer(headerRenderer(origHdr, SwingConstants.CENTER));
+        var stockRenderer = new DefaultTableCellRenderer();
+        stockRenderer.setHorizontalAlignment(SwingConstants.CENTER);
+        colStock.setCellRenderer(stockRenderer);
+
+        // ── Available (centre / coloured badge) ──────────────────────────────
+        var colAvail = tblFood.getColumnModel().getColumn(4);
+        colAvail.setMinWidth(110);
+        colAvail.setHeaderRenderer(headerRenderer(origHdr, SwingConstants.CENTER));
+        colAvail.setCellRenderer(new AvailabilityCellRenderer());
+
+        // ── Image (centre / thumbnail) ────────────────────────────────────────
+        var colImg = tblFood.getColumnModel().getColumn(5);
+        colImg.setMinWidth(100);
+        colImg.setHeaderRenderer(headerRenderer(origHdr, SwingConstants.CENTER));
+        colImg.setCellRenderer(new ImageCellRenderer());
+
         tblFood.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) tableRowSelected();
         });
+        // Hide internal ID column from view; model column 0 still accessible for CRUD
+        tblFood.getColumnModel().removeColumn(tblFood.getColumnModel().getColumn(0));
 
         // Search bar for table
         AppTheme.styleField(txtSearch);
@@ -248,13 +300,33 @@ public class FoodManagementFrame extends javax.swing.JFrame {
                 tableModel.addRow(new Object[]{
                     f.getFoodId(), f.getFoodName(),
                     String.format("%.2f", f.getPrice()),
-                    f.getStockQuantity(), f.getImagePath()
+                    f.getStockQuantity(), f.isAvailable(), f.getImagePath()
                 });
             }
         } catch (Exception e) {
             AppTheme.showError(this, "Database Error",
                     "Could not load food items: " + e.getMessage());
         }
+        // Re-apply proportional widths after data changes; invokeLater ensures layout is complete
+        SwingUtilities.invokeLater(this::applyFoodTableColumnWidths);
+    }
+
+    /**
+     * Distributes table column widths proportionally across the visible viewport.
+     * Called on frame show, resize, and after data load to eliminate the fixed-width
+     * problem that causes the Name column to absorb all remaining space.
+     * View columns after ID removal: 0=Name 1=Price 2=Stock 3=Available 4=Image.
+     */
+    private void applyFoodTableColumnWidths() {
+        int totalWidth = (tblFood.getParent() != null) ? tblFood.getParent().getWidth() : 0;
+        if (totalWidth <= 0) totalWidth = tblFood.getWidth();
+        if (totalWidth <= 0) return;
+        var cols = tblFood.getColumnModel();
+        cols.getColumn(0).setPreferredWidth((int) (totalWidth * 0.35));
+        cols.getColumn(1).setPreferredWidth((int) (totalWidth * 0.16));
+        cols.getColumn(2).setPreferredWidth((int) (totalWidth * 0.12));
+        cols.getColumn(3).setPreferredWidth((int) (totalWidth * 0.17));
+        cols.getColumn(4).setPreferredWidth((int) (totalWidth * 0.20));
     }
 
     private void filterTable(String query) {
@@ -267,7 +339,7 @@ public class FoodManagementFrame extends javax.swing.JFrame {
                     tableModel.addRow(new Object[]{
                         f.getFoodId(), f.getFoodName(),
                         String.format("%.2f", f.getPrice()),
-                        f.getStockQuantity(), f.getImagePath()
+                        f.getStockQuantity(), f.isAvailable(), f.getImagePath()
                     });
                 }
             }
@@ -277,12 +349,13 @@ public class FoodManagementFrame extends javax.swing.JFrame {
     }
 
     private void tableRowSelected() {
-        int row = tblFood.getSelectedRow();
-        if (row < 0) return;
+        int viewRow = tblFood.getSelectedRow();
+        if (viewRow < 0) return;
+        int row = tblFood.convertRowIndexToModel(viewRow);
         txtName.setText(tableModel.getValueAt(row, 1).toString());
         txtPrice.setText(tableModel.getValueAt(row, 2).toString());
         txtStock.setText(tableModel.getValueAt(row, 3).toString());
-        Object imgPath = tableModel.getValueAt(row, 4);
+        Object imgPath = tableModel.getValueAt(row, 5);
         persistedImagePath = (imgPath != null) ? imgPath.toString() : null;
         selectedSourceFile  = null;   // no new image chosen yet
         if (persistedImagePath != null && !persistedImagePath.isBlank()) {
@@ -337,12 +410,13 @@ public class FoodManagementFrame extends javax.swing.JFrame {
     }//GEN-LAST:event_btnAddActionPerformed
 
     private void btnUpdateActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnUpdateActionPerformed
-        int row = tblFood.getSelectedRow();
-        if (row < 0) {
+        int viewRow = tblFood.getSelectedRow();
+        if (viewRow < 0) {
             AppTheme.showWarning(this, "No Selection",
                     "Please select a food item from the table to update.");
             return;
         }
+        int row = tblFood.convertRowIndexToModel(viewRow);
         String name  = txtName.getText().trim();
         String price = txtPrice.getText().trim();
         String stock = txtStock.getText().trim();
@@ -397,12 +471,13 @@ public class FoodManagementFrame extends javax.swing.JFrame {
     }//GEN-LAST:event_btnUpdateActionPerformed
 
     private void btnDeleteActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnDeleteActionPerformed
-        int row = tblFood.getSelectedRow();
-        if (row < 0) {
+        int viewRow = tblFood.getSelectedRow();
+        if (viewRow < 0) {
             AppTheme.showWarning(this, "No Selection",
                     "Please select a food item from the table to delete.");
             return;
         }
+        int row = tblFood.convertRowIndexToModel(viewRow);
         String name = tableModel.getValueAt(row, 1).toString();
         if (!AppTheme.showConfirm(this, "Confirm Delete",
                 "Delete \"" + name + "\"? This cannot be undone.")) {
@@ -452,6 +527,74 @@ public class FoodManagementFrame extends javax.swing.JFrame {
         lblImagePreview.setIcon(null);
         lblImagePreview.setText("No Image");
         tblFood.clearSelection();
+    }
+
+    /**
+     * Returns a per-column header renderer that wraps the L&F default renderer
+     * and overrides only the horizontal alignment, so the native header look is preserved.
+     */
+    private static javax.swing.table.TableCellRenderer headerRenderer(
+            javax.swing.table.TableCellRenderer orig, int alignment) {
+        return new DefaultTableCellRenderer() {
+            @Override
+            public Component getTableCellRendererComponent(JTable table, Object value,
+                    boolean isSelected, boolean hasFocus, int row, int column) {
+                Component c = orig.getTableCellRendererComponent(
+                        table, value, isSelected, hasFocus, row, column);
+                if (c instanceof JLabel) ((JLabel) c).setHorizontalAlignment(alignment);
+                return c;
+            }
+        };
+    }
+
+    /**
+     * Renders a scaled food thumbnail in the Image column.
+     * Results are cached by managed relative filename to avoid repeated disk reads during repaints.
+     */
+    private static class ImageCellRenderer extends DefaultTableCellRenderer {
+        private static final java.util.Map<String, ImageIcon> CACHE =
+                new java.util.LinkedHashMap<String, ImageIcon>(64, 0.75f, true) {
+                    @Override
+                    protected boolean removeEldestEntry(java.util.Map.Entry<String, ImageIcon> e) {
+                        return size() > 50;
+                    }
+                };
+
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value,
+                boolean isSelected, boolean hasFocus, int row, int column) {
+            JLabel lbl = (JLabel) super.getTableCellRendererComponent(
+                    table, "", isSelected, hasFocus, row, column);
+            lbl.setHorizontalAlignment(SwingConstants.CENTER);
+            lbl.setVerticalAlignment(SwingConstants.CENTER);
+            String path = (value != null) ? value.toString() : null;
+            if (path == null || path.isBlank()) {
+                lbl.setIcon(ImageManager.placeholder(80, 56));
+            } else {
+                lbl.setIcon(CACHE.computeIfAbsent(path, p -> ImageManager.loadScaled(p, 80, 56)));
+            }
+            return lbl;
+        }
+    }
+
+    /**
+     * Renders the Available column as a coloured "Available" / "Unavailable" badge.
+     * Foreground colour is suppressed when the row is selected so contrast is preserved.
+     */
+    private static class AvailabilityCellRenderer extends DefaultTableCellRenderer {
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value,
+                boolean isSelected, boolean hasFocus, int row, int column) {
+            String text = Boolean.TRUE.equals(value) ? "Available" : "Unavailable";
+            JLabel lbl = (JLabel) super.getTableCellRendererComponent(
+                    table, text, isSelected, hasFocus, row, column);
+            lbl.setHorizontalAlignment(SwingConstants.CENTER);
+            lbl.setFont(AppTheme.FONT_SMALL);
+            if (!isSelected) {
+                lbl.setForeground(Boolean.TRUE.equals(value) ? AppTheme.SUCCESS : AppTheme.DANGER);
+            }
+            return lbl;
+        }
     }
 
     public static void main(String[] args) {
