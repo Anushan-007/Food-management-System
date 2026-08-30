@@ -70,6 +70,8 @@ public class CustomerOrdersFrame extends javax.swing.JFrame {
         tblOrders.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) orderRowSelected();
         });
+        // Hide internal ID column from view; cachedOrders.get(row) still works for item lookup
+        tblOrders.getColumnModel().removeColumn(tblOrders.getColumnModel().getColumn(0));
 
         JScrollPane ordersScroll = new JScrollPane(tblOrders);
         ordersScroll.setBorder(BorderFactory.createLineBorder(AppTheme.BORDER));
