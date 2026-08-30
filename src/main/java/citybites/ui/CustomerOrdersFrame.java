@@ -7,180 +7,181 @@ import citybites.service.OrderService;
 import citybites.util.SessionManager;
 import java.awt.*;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import javax.swing.*;
-import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 
 public class CustomerOrdersFrame extends javax.swing.JFrame {
 
     private static final java.util.logging.Logger logger =
             java.util.logging.Logger.getLogger(CustomerOrdersFrame.class.getName());
-    private List<Order> orders;
+
+    private static final DateTimeFormatter DT_FMT =
+            DateTimeFormatter.ofPattern("dd MMM yyyy  HH:mm");
+
+    private DefaultTableModel ordersModel;
+    private DefaultTableModel itemsModel;
+    private List<Order> cachedOrders = new ArrayList<>();
 
     public CustomerOrdersFrame() {
         initComponents();
         setTitle("City Bites - My Orders");
-        setMinimumSize(new Dimension(900, 640));
-        setSize(1000, 720);
+        setMinimumSize(new Dimension(860, 580));
+        setSize(1060, 680);
         setLocationRelativeTo(null);
         setResizable(true);
-
-        AppTheme.styleTable(tblOrders);
-        AppTheme.styleTable(tblOrderItems);
-
-        tblOrders.getColumnModel().getColumn(0).setPreferredWidth(90);
-        tblOrders.getColumnModel().getColumn(1).setPreferredWidth(200);
-        tblOrders.getColumnModel().getColumn(2).setPreferredWidth(130);
-        tblOrders.getColumnModel().getColumn(3).setPreferredWidth(120);
-
-        tblOrderItems.getColumnModel().getColumn(0).setPreferredWidth(340);
-        tblOrderItems.getColumnModel().getColumn(1).setPreferredWidth(130);
-        tblOrderItems.getColumnModel().getColumn(2).setPreferredWidth(100);
-        tblOrderItems.getColumnModel().getColumn(3).setPreferredWidth(130);
-
-        // Colour-code status column (column 3)
-        tblOrders.getColumnModel().getColumn(3).setCellRenderer(new StatusCellRenderer());
-
-        loadCustomerOrders();
-
-        tblOrders.getSelectionModel().addListSelectionListener(event -> {
-            if (!event.getValueIsAdjusting()) loadSelectedOrderItems();
-        });
-    }
-
-    private void loadCustomerOrders() {
-        DefaultTableModel model = (DefaultTableModel) tblOrders.getModel();
-        model.setRowCount(0);
-        Customer customer = SessionManager.getLoggedInCustomer();
-        if (customer == null) return;
-        try {
-            orders = OrderService.getOrdersByCustomer(customer.getCustomerId());
-            DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
-            for (Order order : orders) {
-                model.addRow(new Object[]{
-                    order.getOrderId(),
-                    order.getOrderDate().format(fmt),
-                    String.format("%.2f", order.getTotalAmount()),
-                    order.getStatus()
-                });
-            }
-        } catch (Exception e) {
-            JOptionPane.showMessageDialog(this, "Error loading orders: " + e.getMessage(),
-                    "Database Error", JOptionPane.ERROR_MESSAGE);
-        }
-    }
-
-    private void loadSelectedOrderItems() {
-        int row = tblOrders.getSelectedRow();
-        if (row == -1) return;
-        int orderId = Integer.parseInt(tblOrders.getValueAt(row, 0).toString());
-        Order selected = null;
-        if (orders != null) {
-            for (Order o : orders) { if (o.getOrderId() == orderId) { selected = o; break; } }
-        }
-        if (selected == null) return;
-        DefaultTableModel model = (DefaultTableModel) tblOrderItems.getModel();
-        model.setRowCount(0);
-        for (OrderItem item : selected.getOrderItems()) {
-            model.addRow(new Object[]{
-                item.getFoodName(),
-                String.format("%.2f", item.getUnitPrice()),
-                item.getQuantity(),
-                String.format("%.2f", item.getSubtotal())
-            });
-        }
+        loadOrders();
     }
 
     @SuppressWarnings("unchecked")
     // <editor-fold defaultstate="collapsed" desc="Generated Code">//GEN-BEGIN:initComponents
     private void initComponents() {
-        lblTitle      = new javax.swing.JLabel();
-        jScrollPane1  = new javax.swing.JScrollPane();
-        tblOrders     = new javax.swing.JTable();
-        lblItemsTitle = new javax.swing.JLabel();
-        jScrollPane2  = new javax.swing.JScrollPane();
-        tblOrderItems = new javax.swing.JTable();
-        btnRefresh    = new javax.swing.JButton();
-        btnBack       = new javax.swing.JButton();
+        tblOrders = new javax.swing.JTable();
+        tblItems  = new javax.swing.JTable();
+        btnBack   = new javax.swing.JButton();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
 
-        // ── Header ──────────────────────────────────────────────
-        JPanel header = AppTheme.headerPanel("My Orders");
+        // ── Navigation header ────────────────────────────────────────
+        JButton refreshBtn = AppTheme.secondaryBtn("Refresh");
+        refreshBtn.addActionListener(e -> loadOrders());
 
-        // ── Orders table ─────────────────────────────────────────
-        tblOrders.setModel(new javax.swing.table.DefaultTableModel(
-                new Object[][]{},
-                new String[]{"Order ID", "Order Date", "Total (Rs.)", "Status"}
-        ) {
-            @Override public boolean isCellEditable(int row, int column) { return false; }
-        });
-        jScrollPane1.setViewportView(tblOrders);
-        jScrollPane1.setBorder(javax.swing.BorderFactory.createLineBorder(AppTheme.BORDER));
-
-        // ── Items table ──────────────────────────────────────────
-        tblOrderItems.setModel(new javax.swing.table.DefaultTableModel(
-                new Object[][]{},
-                new String[]{"Food Name", "Unit Price", "Quantity", "Subtotal"}
-        ) {
-            @Override public boolean isCellEditable(int row, int column) { return false; }
-        });
-        jScrollPane2.setViewportView(tblOrderItems);
-        jScrollPane2.setBorder(javax.swing.BorderFactory.createLineBorder(AppTheme.BORDER));
-
-        // ── Labels ───────────────────────────────────────────────
-        JLabel ordersLabel = new JLabel("My Orders");
-        ordersLabel.setFont(AppTheme.FONT_HEADING);
-        ordersLabel.setForeground(AppTheme.TEXT_PRIMARY);
-
-        lblItemsTitle.setText("Order Items");
-        lblItemsTitle.setFont(AppTheme.FONT_HEADING);
-        lblItemsTitle.setForeground(AppTheme.TEXT_PRIMARY);
-
-        // ── Sections ─────────────────────────────────────────────
-        JPanel ordersSection = new JPanel(new BorderLayout(0, 6));
-        ordersSection.setBackground(AppTheme.BG_CARD);
-        ordersSection.add(ordersLabel,  BorderLayout.NORTH);
-        ordersSection.add(jScrollPane1, BorderLayout.CENTER);
-
-        JPanel itemsSection = new JPanel(new BorderLayout(0, 6));
-        itemsSection.setBackground(AppTheme.BG_CARD);
-        itemsSection.add(lblItemsTitle, BorderLayout.NORTH);
-        itemsSection.add(jScrollPane2,  BorderLayout.CENTER);
-
-        JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, ordersSection, itemsSection);
-        split.setDividerLocation(320);
-        split.setDividerSize(6);
-        split.setBackground(AppTheme.BG_CARD);
-        split.setBorder(javax.swing.BorderFactory.createEmptyBorder(0, 18, 0, 18));
-
-        JPanel contentPanel = new JPanel(new BorderLayout());
-        contentPanel.setBackground(AppTheme.BG_MAIN);
-        contentPanel.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 0, 0, 0));
-        contentPanel.add(split, BorderLayout.CENTER);
-
-        // ── Bottom bar ───────────────────────────────────────────
-        btnRefresh = AppTheme.secondaryBtn("Refresh");
-        btnRefresh.setPreferredSize(new Dimension(90, 30));
-        btnRefresh.addActionListener(e -> loadCustomerOrders());
-
-        btnBack = AppTheme.secondaryBtn("Back");
-        btnBack.setPreferredSize(new Dimension(90, 30));
+        btnBack = AppTheme.ghostBtn("← Back");
+        btnBack.setForeground(new Color(150, 170, 190));
         btnBack.addActionListener(this::btnBackActionPerformed);
 
-        JPanel bottomBar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 14, 10));
-        bottomBar.setBackground(AppTheme.BG_FOOTER);
-        bottomBar.setBorder(AppTheme.footerBorder());
-        bottomBar.add(btnRefresh);
-        bottomBar.add(btnBack);
+        Customer customer = SessionManager.getLoggedInCustomer();
+        String userLabel  = (customer != null) ? customer.getFullName() : null;
+        JPanel header = AppTheme.navHeader("My Orders", userLabel, refreshBtn, btnBack);
 
+        // ── Orders table ─────────────────────────────────────────────
+        String[] orderCols = {"ID", "Date & Time", "Total (Rs.)", "Status"};
+        ordersModel = new DefaultTableModel(orderCols, 0) {
+            @Override public boolean isCellEditable(int r, int c) { return false; }
+        };
+        tblOrders = new javax.swing.JTable(ordersModel);
+        AppTheme.styleTable(tblOrders);
+        tblOrders.getColumnModel().getColumn(0).setMaxWidth(60);
+        tblOrders.getColumnModel().getColumn(1).setPreferredWidth(160);
+        tblOrders.getColumnModel().getColumn(2).setPreferredWidth(120);
+        tblOrders.getColumnModel().getColumn(3).setPreferredWidth(120);
+        tblOrders.getColumnModel().getColumn(3).setCellRenderer(new AppTheme.StatusCellRenderer());
+        tblOrders.getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) orderRowSelected();
+        });
+
+        JScrollPane ordersScroll = new JScrollPane(tblOrders);
+        ordersScroll.setBorder(BorderFactory.createLineBorder(AppTheme.BORDER));
+        ordersScroll.getViewport().setBackground(AppTheme.BG_CARD);
+
+        JLabel ordersTitle = new JLabel("Order History");
+        ordersTitle.setFont(AppTheme.FONT_SUBHEAD);
+        ordersTitle.setForeground(AppTheme.TEXT_PRIMARY);
+        ordersTitle.setBorder(BorderFactory.createEmptyBorder(0, 0, 8, 0));
+
+        JPanel ordersPanel = new JPanel(new BorderLayout(0, 6));
+        ordersPanel.setBackground(AppTheme.BG_MAIN);
+        ordersPanel.add(ordersTitle,  BorderLayout.NORTH);
+        ordersPanel.add(ordersScroll, BorderLayout.CENTER);
+
+        // ── Order items table ────────────────────────────────────────
+        String[] itemCols = {"Food Item", "Qty", "Unit Price (Rs.)", "Subtotal (Rs.)"};
+        itemsModel = new DefaultTableModel(itemCols, 0) {
+            @Override public boolean isCellEditable(int r, int c) { return false; }
+        };
+        tblItems = new javax.swing.JTable(itemsModel);
+        AppTheme.styleTable(tblItems);
+        tblItems.getColumnModel().getColumn(1).setMaxWidth(60);
+
+        JScrollPane itemsScroll = new JScrollPane(tblItems);
+        itemsScroll.setBorder(BorderFactory.createLineBorder(AppTheme.BORDER));
+        itemsScroll.getViewport().setBackground(AppTheme.BG_CARD);
+        itemsScroll.setPreferredSize(new Dimension(0, 200));
+
+        JLabel itemsTitle = new JLabel("Items in Selected Order");
+        itemsTitle.setFont(AppTheme.FONT_SUBHEAD);
+        itemsTitle.setForeground(AppTheme.TEXT_PRIMARY);
+        itemsTitle.setBorder(BorderFactory.createEmptyBorder(0, 0, 8, 0));
+
+        JPanel detailPanel = new JPanel(new BorderLayout(0, 6));
+        detailPanel.setBackground(AppTheme.BG_MAIN);
+        detailPanel.add(itemsTitle,  BorderLayout.NORTH);
+        detailPanel.add(itemsScroll, BorderLayout.CENTER);
+
+        // ── Split pane ───────────────────────────────────────────────
+        JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, ordersPanel, detailPanel);
+        split.setDividerLocation(300);
+        split.setResizeWeight(0.55);
+        split.setBorder(null);
+
+        JPanel body = new JPanel(new BorderLayout());
+        body.setBackground(AppTheme.BG_MAIN);
+        body.setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16));
+        body.add(split, BorderLayout.CENTER);
+
+        // ── Root layout ──────────────────────────────────────────────
         getContentPane().setBackground(AppTheme.BG_MAIN);
         getContentPane().setLayout(new BorderLayout());
-        getContentPane().add(header,       BorderLayout.NORTH);
-        getContentPane().add(contentPanel, BorderLayout.CENTER);
-        getContentPane().add(bottomBar,    BorderLayout.SOUTH);
+        getContentPane().add(header, BorderLayout.NORTH);
+        getContentPane().add(body,   BorderLayout.CENTER);
     }// </editor-fold>//GEN-END:initComponents
+
+    // ── Data loading ──────────────────────────────────────────────────
+
+    private void loadOrders() {
+        ordersModel.setRowCount(0);
+        itemsModel.setRowCount(0);
+        cachedOrders.clear();
+
+        Customer customer = SessionManager.getLoggedInCustomer();
+        if (customer == null) {
+            showEmptyState("Not logged in");
+            return;
+        }
+        try {
+            cachedOrders = OrderService.getOrdersByCustomer(customer.getCustomerId());
+            if (cachedOrders.isEmpty()) {
+                showEmptyState("No orders yet");
+                return;
+            }
+            for (Order o : cachedOrders) {
+                String dateStr = (o.getOrderDate() != null)
+                        ? o.getOrderDate().format(DT_FMT) : "—";
+                ordersModel.addRow(new Object[]{
+                    o.getOrderId(),
+                    dateStr,
+                    String.format("%.2f", o.getTotalAmount()),
+                    o.getStatus()
+                });
+            }
+        } catch (Exception e) {
+            AppTheme.showError(this, "Database Error",
+                    "Could not load orders: " + e.getMessage());
+        }
+    }
+
+    private void showEmptyState(String reason) {
+        // Show an info row so the table isn't just blank
+        ordersModel.addRow(new Object[]{"—", reason, "—", "—"});
+    }
+
+    private void orderRowSelected() {
+        int row = tblOrders.getSelectedRow();
+        if (row < 0 || row >= cachedOrders.size()) return;
+        Order order = cachedOrders.get(row);
+        itemsModel.setRowCount(0);
+        for (OrderItem item : order.getOrderItems()) {
+            itemsModel.addRow(new Object[]{
+                item.getFoodName(),
+                item.getQuantity(),
+                String.format("%.2f", item.getUnitPrice()),
+                String.format("%.2f", item.getSubtotal())
+            });
+        }
+    }
+
+    // ── Event handlers ────────────────────────────────────────────────
 
     private void btnBackActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnBackActionPerformed
         new CustomerDashboardFrame().setVisible(true);
@@ -191,28 +192,9 @@ public class CustomerOrdersFrame extends javax.swing.JFrame {
         java.awt.EventQueue.invokeLater(() -> new CustomerOrdersFrame().setVisible(true));
     }
 
-    /** Renders the Status column with AppTheme colours. */
-    private static class StatusCellRenderer extends DefaultTableCellRenderer {
-        @Override
-        public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected,
-                boolean hasFocus, int row, int column) {
-            super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
-            if (!isSelected && value != null) {
-                setForeground(AppTheme.statusColor(value.toString()));
-                setFont(AppTheme.FONT_SUBHEAD);
-            }
-            return this;
-        }
-    }
-
     // Variables declaration - do not modify//GEN-BEGIN:variables
+    private javax.swing.JTable tblOrders;
+    private javax.swing.JTable tblItems;
     private javax.swing.JButton btnBack;
-    private javax.swing.JButton btnRefresh;
-    private javax.swing.JScrollPane jScrollPane1;
-    private javax.swing.JScrollPane jScrollPane2;
-    private javax.swing.JLabel  lblItemsTitle;
-    private javax.swing.JLabel  lblTitle;
-    private javax.swing.JTable  tblOrderItems;
-    private javax.swing.JTable  tblOrders;
     // End of variables declaration//GEN-END:variables
 }

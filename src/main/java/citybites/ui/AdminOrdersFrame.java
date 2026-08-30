@@ -5,248 +5,214 @@ import citybites.model.OrderItem;
 import citybites.service.OrderService;
 import java.awt.*;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import javax.swing.*;
-import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 
 public class AdminOrdersFrame extends javax.swing.JFrame {
 
     private static final java.util.logging.Logger logger =
             java.util.logging.Logger.getLogger(AdminOrdersFrame.class.getName());
-    private int selectedOrderId = -1;
-    private List<Order> orders;
+
+    private static final DateTimeFormatter DT_FMT =
+            DateTimeFormatter.ofPattern("dd MMM yyyy  HH:mm");
+
+    private DefaultTableModel ordersModel;
+    private DefaultTableModel itemsModel;
+    private List<Order> cachedOrders = new ArrayList<>();
 
     public AdminOrdersFrame() {
         initComponents();
         setTitle("City Bites - Customer Orders");
-        setMinimumSize(new Dimension(980, 680));
-        setSize(1100, 760);
+        setMinimumSize(new Dimension(1000, 620));
+        setSize(1200, 720);
         setLocationRelativeTo(null);
         setResizable(true);
-
-        // Status dropdown includes all valid target statuses
-        cmbStatus.setModel(new javax.swing.DefaultComboBoxModel<>(
-                new String[]{"Preparing", "Ready", "Completed", "Cancelled"}));
-        btnUpdateStatus.setEnabled(false);
-
-        AppTheme.styleTable(tblOrders);
-        AppTheme.styleTable(tblOrderItems);
-
-        tblOrders.getColumnModel().getColumn(0).setPreferredWidth(80);
-        tblOrders.getColumnModel().getColumn(1).setPreferredWidth(200);
-        tblOrders.getColumnModel().getColumn(2).setPreferredWidth(150);
-        tblOrders.getColumnModel().getColumn(3).setPreferredWidth(120);
-        tblOrders.getColumnModel().getColumn(4).setPreferredWidth(110);
-
-        tblOrderItems.getColumnModel().getColumn(0).setPreferredWidth(300);
-        tblOrderItems.getColumnModel().getColumn(1).setPreferredWidth(120);
-        tblOrderItems.getColumnModel().getColumn(2).setPreferredWidth(90);
-        tblOrderItems.getColumnModel().getColumn(3).setPreferredWidth(120);
-
-        // Colour-code status column
-        tblOrders.getColumnModel().getColumn(4).setCellRenderer(new StatusCellRenderer());
-
         loadOrdersTable();
-
-        tblOrders.getSelectionModel().addListSelectionListener(event -> {
-            if (!event.getValueIsAdjusting()) selectOrder();
-        });
-    }
-
-    private void loadOrdersTable() {
-        DefaultTableModel model = (DefaultTableModel) tblOrders.getModel();
-        model.setRowCount(0);
-        try {
-            orders = OrderService.getAllOrders();
-            DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
-            for (Order order : orders) {
-                model.addRow(new Object[]{
-                    order.getOrderId(),
-                    order.getCustomer().getFullName(),
-                    order.getOrderDate().format(fmt),
-                    String.format("%.2f", order.getTotalAmount()),
-                    order.getStatus()
-                });
-            }
-        } catch (Exception e) {
-            JOptionPane.showMessageDialog(this, "Error loading orders: " + e.getMessage(),
-                    "Database Error", JOptionPane.ERROR_MESSAGE);
-        }
-    }
-
-    private void selectOrder() {
-        int row = tblOrders.getSelectedRow();
-        if (row == -1) return;
-        selectedOrderId = Integer.parseInt(tblOrders.getValueAt(row, 0).toString());
-        Order selected = findSelectedOrder();
-        if (selected == null) return;
-        // Pre-select the next logical status
-        String next = nextStatus(selected.getStatus());
-        if (next != null) cmbStatus.setSelectedItem(next);
-        loadOrderItems(selected);
-        btnUpdateStatus.setEnabled(true);
-        lblCurrentStatus.setText("Current status: " + selected.getStatus());
-    }
-
-    private String nextStatus(String current) {
-        return switch (current) {
-            case "Pending"   -> "Preparing";
-            case "Preparing" -> "Ready";
-            case "Ready"     -> "Completed";
-            default          -> null;
-        };
-    }
-
-    private Order findSelectedOrder() {
-        if (orders == null) return null;
-        for (Order o : orders) { if (o.getOrderId() == selectedOrderId) return o; }
-        return null;
-    }
-
-    private void loadOrderItems(Order order) {
-        DefaultTableModel model = (DefaultTableModel) tblOrderItems.getModel();
-        model.setRowCount(0);
-        for (OrderItem item : order.getOrderItems()) {
-            model.addRow(new Object[]{
-                item.getFoodName(),
-                String.format("%.2f", item.getUnitPrice()),
-                item.getQuantity(),
-                String.format("%.2f", item.getSubtotal())
-            });
-        }
     }
 
     @SuppressWarnings("unchecked")
     // <editor-fold defaultstate="collapsed" desc="Generated Code">//GEN-BEGIN:initComponents
     private void initComponents() {
-        lblTitle        = new javax.swing.JLabel();
-        lblCurrentStatus = new javax.swing.JLabel();
-        jScrollPane1    = new javax.swing.JScrollPane();
         tblOrders       = new javax.swing.JTable();
-        lblOrderItems   = new javax.swing.JLabel();
-        jScrollPane2    = new javax.swing.JScrollPane();
-        tblOrderItems   = new javax.swing.JTable();
-        lblStatus       = new javax.swing.JLabel();
+        tblItems        = new javax.swing.JTable();
         cmbStatus       = new javax.swing.JComboBox<>();
         btnUpdateStatus = new javax.swing.JButton();
-        btnRefresh      = new javax.swing.JButton();
         btnBack         = new javax.swing.JButton();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
 
-        // ── Header ──────────────────────────────────────────────
-        JPanel header = AppTheme.headerPanel("Customer Orders");
+        // ── Navigation header ────────────────────────────────────────
+        JButton refreshBtn = AppTheme.secondaryBtn("Refresh");
+        refreshBtn.addActionListener(e -> loadOrdersTable());
 
-        // ── Tables ──────────────────────────────────────────────
-        tblOrders.setModel(new javax.swing.table.DefaultTableModel(
-                new Object[][]{},
-                new String[]{"Order ID", "Customer", "Order Date", "Total (Rs.)", "Status"}
-        ) {
-            @Override public boolean isCellEditable(int row, int column) { return false; }
-        });
-        jScrollPane1.setViewportView(tblOrders);
-        jScrollPane1.setBorder(javax.swing.BorderFactory.createLineBorder(AppTheme.BORDER));
-
-        tblOrderItems.setModel(new javax.swing.table.DefaultTableModel(
-                new Object[][]{},
-                new String[]{"Food Name", "Unit Price", "Quantity", "Subtotal"}
-        ) {
-            @Override public boolean isCellEditable(int row, int column) { return false; }
-        });
-        jScrollPane2.setViewportView(tblOrderItems);
-        jScrollPane2.setBorder(javax.swing.BorderFactory.createLineBorder(AppTheme.BORDER));
-
-        // ── Labels ──────────────────────────────────────────────
-        lblOrderItems.setText("Selected Order Items");
-        lblOrderItems.setFont(AppTheme.FONT_HEADING);
-        lblOrderItems.setForeground(AppTheme.TEXT_PRIMARY);
-
-        lblStatus.setText("Change Status:");
-        lblStatus.setFont(AppTheme.FONT_BODY);
-        lblStatus.setForeground(AppTheme.TEXT_PRIMARY);
-
-        lblCurrentStatus.setText("Select an order above");
-        lblCurrentStatus.setFont(AppTheme.FONT_SMALL);
-        lblCurrentStatus.setForeground(AppTheme.TEXT_MUTED);
-
-        // ── Buttons ─────────────────────────────────────────────
-        cmbStatus.setFont(AppTheme.FONT_BODY);
-        cmbStatus.setPreferredSize(new Dimension(140, 28));
-
-        btnUpdateStatus = AppTheme.primaryBtn("Update Status");
-        btnUpdateStatus.setPreferredSize(new Dimension(130, 30));
-        btnUpdateStatus.addActionListener(this::btnUpdateStatusActionPerformed);
-
-        btnRefresh = AppTheme.secondaryBtn("Refresh");
-        btnRefresh.setPreferredSize(new Dimension(90, 30));
-        btnRefresh.addActionListener(e -> { loadOrdersTable(); resetSelection(); });
-
-        btnBack = AppTheme.secondaryBtn("Back");
-        btnBack.setPreferredSize(new Dimension(90, 30));
+        btnBack = AppTheme.ghostBtn("← Back");
+        btnBack.setForeground(new Color(150, 170, 190));
         btnBack.addActionListener(this::btnBackActionPerformed);
 
-        // ── Section labels ───────────────────────────────────────
-        JLabel allOrdersLbl = new JLabel("All Orders");
-        allOrdersLbl.setFont(AppTheme.FONT_HEADING);
-        allOrdersLbl.setForeground(AppTheme.TEXT_PRIMARY);
+        JPanel header = AppTheme.navHeader("Customer Orders", null, refreshBtn, btnBack);
 
-        JPanel ordersSection = new JPanel(new BorderLayout(0, 6));
-        ordersSection.setBackground(AppTheme.BG_CARD);
-        ordersSection.add(allOrdersLbl, BorderLayout.NORTH);
-        ordersSection.add(jScrollPane1, BorderLayout.CENTER);
+        // ── Orders table ─────────────────────────────────────────────
+        String[] orderCols = {"ID", "Customer", "Date & Time", "Total (Rs.)", "Status"};
+        ordersModel = new DefaultTableModel(orderCols, 0) {
+            @Override public boolean isCellEditable(int r, int c) { return false; }
+        };
+        tblOrders = new javax.swing.JTable(ordersModel);
+        AppTheme.styleTable(tblOrders);
+        tblOrders.getColumnModel().getColumn(0).setMaxWidth(60);
+        tblOrders.getColumnModel().getColumn(2).setPreferredWidth(160);
+        tblOrders.getColumnModel().getColumn(3).setPreferredWidth(120);
+        tblOrders.getColumnModel().getColumn(4).setPreferredWidth(110);
+        tblOrders.getColumnModel().getColumn(4).setCellRenderer(new AppTheme.StatusCellRenderer());
+        tblOrders.getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) orderRowSelected();
+        });
 
-        JPanel itemsSection = new JPanel(new BorderLayout(0, 6));
-        itemsSection.setBackground(AppTheme.BG_CARD);
-        itemsSection.add(lblOrderItems, BorderLayout.NORTH);
-        itemsSection.add(jScrollPane2,  BorderLayout.CENTER);
+        JScrollPane ordersScroll = new JScrollPane(tblOrders);
+        ordersScroll.setBorder(BorderFactory.createLineBorder(AppTheme.BORDER));
+        ordersScroll.getViewport().setBackground(AppTheme.BG_CARD);
 
-        JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, ordersSection, itemsSection);
-        split.setDividerLocation(310);
-        split.setDividerSize(6);
-        split.setBackground(AppTheme.BG_CARD);
-        split.setBorder(javax.swing.BorderFactory.createEmptyBorder(0, 18, 0, 18));
+        JLabel ordersTitle = new JLabel("All Orders");
+        ordersTitle.setFont(AppTheme.FONT_SUBHEAD);
+        ordersTitle.setForeground(AppTheme.TEXT_PRIMARY);
+        ordersTitle.setBorder(BorderFactory.createEmptyBorder(0, 0, 8, 0));
 
-        JPanel contentPanel = new JPanel(new BorderLayout());
-        contentPanel.setBackground(AppTheme.BG_MAIN);
-        contentPanel.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 0, 0, 0));
-        contentPanel.add(split, BorderLayout.CENTER);
+        JPanel ordersPanel = new JPanel(new BorderLayout(0, 6));
+        ordersPanel.setBackground(AppTheme.BG_MAIN);
+        ordersPanel.add(ordersTitle,  BorderLayout.NORTH);
+        ordersPanel.add(ordersScroll, BorderLayout.CENTER);
 
-        // ── Status bar ───────────────────────────────────────────
-        JPanel statusBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 10));
-        statusBar.setBackground(AppTheme.BG_FOOTER);
-        statusBar.setBorder(AppTheme.footerBorder());
-        statusBar.add(lblCurrentStatus);
-        statusBar.add(Box.createHorizontalStrut(16));
-        statusBar.add(lblStatus);
+        // ── Order items table ────────────────────────────────────────
+        String[] itemCols = {"Food Item", "Qty", "Unit Price (Rs.)", "Subtotal (Rs.)"};
+        itemsModel = new DefaultTableModel(itemCols, 0) {
+            @Override public boolean isCellEditable(int r, int c) { return false; }
+        };
+        tblItems = new javax.swing.JTable(itemsModel);
+        AppTheme.styleTable(tblItems);
+        tblItems.getColumnModel().getColumn(1).setMaxWidth(60);
+
+        JScrollPane itemsScroll = new JScrollPane(tblItems);
+        itemsScroll.setBorder(BorderFactory.createLineBorder(AppTheme.BORDER));
+        itemsScroll.getViewport().setBackground(AppTheme.BG_CARD);
+        itemsScroll.setPreferredSize(new Dimension(0, 180));
+
+        JLabel itemsTitle = new JLabel("Order Items");
+        itemsTitle.setFont(AppTheme.FONT_SUBHEAD);
+        itemsTitle.setForeground(AppTheme.TEXT_PRIMARY);
+        itemsTitle.setBorder(BorderFactory.createEmptyBorder(0, 0, 8, 0));
+
+        // ── Status update ────────────────────────────────────────────
+        cmbStatus = new javax.swing.JComboBox<>(
+                new String[]{"Pending", "Processing", "Ready", "Delivered", "Cancelled"});
+        cmbStatus.setFont(AppTheme.FONT_BODY);
+        cmbStatus.setPreferredSize(new Dimension(160, AppTheme.BTN_H));
+
+        btnUpdateStatus = AppTheme.primaryBtn("Update Status");
+        btnUpdateStatus.addActionListener(this::btnUpdateStatusActionPerformed);
+        btnUpdateStatus.setPreferredSize(new Dimension(160, AppTheme.BTN_H));
+
+        JLabel statusLbl = new JLabel("Set Status:");
+        statusLbl.setFont(AppTheme.FONT_BODY);
+        statusLbl.setForeground(AppTheme.TEXT_PRIMARY);
+
+        JPanel statusBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
+        statusBar.setBackground(AppTheme.BG_MAIN);
+        statusBar.add(statusLbl);
         statusBar.add(cmbStatus);
         statusBar.add(btnUpdateStatus);
-        statusBar.add(Box.createHorizontalStrut(10));
-        statusBar.add(btnRefresh);
-        statusBar.add(Box.createHorizontalStrut(10));
-        statusBar.add(btnBack);
 
+        JPanel detailPanel = new JPanel(new BorderLayout(0, 8));
+        detailPanel.setBackground(AppTheme.BG_MAIN);
+        detailPanel.add(itemsTitle,  BorderLayout.NORTH);
+        detailPanel.add(itemsScroll, BorderLayout.CENTER);
+        detailPanel.add(statusBar,   BorderLayout.SOUTH);
+
+        // ── Split pane ───────────────────────────────────────────────
+        JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, ordersPanel, detailPanel);
+        split.setDividerLocation(320);
+        split.setResizeWeight(0.6);
+        split.setBorder(null);
+
+        JPanel body = new JPanel(new BorderLayout());
+        body.setBackground(AppTheme.BG_MAIN);
+        body.setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16));
+        body.add(split, BorderLayout.CENTER);
+
+        // ── Root layout ──────────────────────────────────────────────
         getContentPane().setBackground(AppTheme.BG_MAIN);
         getContentPane().setLayout(new BorderLayout());
-        getContentPane().add(header,       BorderLayout.NORTH);
-        getContentPane().add(contentPanel, BorderLayout.CENTER);
-        getContentPane().add(statusBar,    BorderLayout.SOUTH);
+        getContentPane().add(header, BorderLayout.NORTH);
+        getContentPane().add(body,   BorderLayout.CENTER);
     }// </editor-fold>//GEN-END:initComponents
 
-    private void btnUpdateStatusActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnUpdateStatusActionPerformed
-        if (selectedOrderId == -1) {
-            JOptionPane.showMessageDialog(this, "Please select an order.",
-                    "No Order Selected", JOptionPane.WARNING_MESSAGE); return;
-        }
-        String newStatus = cmbStatus.getSelectedItem().toString();
+    // ── Data loading ──────────────────────────────────────────────────
+
+    private void loadOrdersTable() {
         try {
-            OrderService.updateOrderStatus(selectedOrderId, newStatus);
-            JOptionPane.showMessageDialog(this, "Order #" + selectedOrderId + " updated to: " + newStatus);
-            loadOrdersTable();
-            resetSelection();
+            ordersModel.setRowCount(0);
+            itemsModel.setRowCount(0);
+            cachedOrders = OrderService.getAllOrders();
+            for (Order o : cachedOrders) {
+                String customerName = (o.getCustomer() != null)
+                        ? o.getCustomer().getFullName() : "—";
+                String dateStr = (o.getOrderDate() != null)
+                        ? o.getOrderDate().format(DT_FMT) : "—";
+                ordersModel.addRow(new Object[]{
+                    o.getOrderId(),
+                    customerName,
+                    dateStr,
+                    String.format("%.2f", o.getTotalAmount()),
+                    o.getStatus()
+                });
+            }
         } catch (Exception e) {
-            JOptionPane.showMessageDialog(this, "Cannot update: " + e.getMessage(),
-                    "Status Update Failed", JOptionPane.ERROR_MESSAGE);
+            AppTheme.showError(this, "Database Error",
+                    "Could not load orders: " + e.getMessage());
+        }
+    }
+
+    private void orderRowSelected() {
+        int row = tblOrders.getSelectedRow();
+        if (row < 0 || row >= cachedOrders.size()) return;
+        Order order = cachedOrders.get(row);
+        cmbStatus.setSelectedItem(order.getStatus());
+        itemsModel.setRowCount(0);
+        for (OrderItem item : order.getOrderItems()) {
+            itemsModel.addRow(new Object[]{
+                item.getFoodName(),
+                item.getQuantity(),
+                String.format("%.2f", item.getUnitPrice()),
+                String.format("%.2f", item.getSubtotal())
+            });
+        }
+    }
+
+    // ── Event handlers ────────────────────────────────────────────────
+
+    private void btnUpdateStatusActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnUpdateStatusActionPerformed
+        int row = tblOrders.getSelectedRow();
+        if (row < 0) {
+            AppTheme.showWarning(this, "No Selection",
+                    "Please select an order to update.");
+            return;
+        }
+        int    orderId   = (int) ordersModel.getValueAt(row, 0);
+        String newStatus = cmbStatus.getSelectedItem().toString();
+        String customer  = ordersModel.getValueAt(row, 1).toString();
+
+        if (!AppTheme.showConfirm(this, "Confirm Update",
+                "Set order #" + orderId + " (" + customer + ") to \"" + newStatus + "\"?")) {
+            return;
+        }
+        try {
+            OrderService.updateOrderStatus(orderId, newStatus);
+            AppTheme.showInfo(this, "Updated",
+                    "Order #" + orderId + " status set to \"" + newStatus + "\".");
+            loadOrdersTable();
+        } catch (Exception ex) {
+            AppTheme.showError(this, "Database Error",
+                    "Could not update status: " + ex.getMessage());
         }
     }//GEN-LAST:event_btnUpdateStatusActionPerformed
 
@@ -255,45 +221,15 @@ public class AdminOrdersFrame extends javax.swing.JFrame {
         dispose();
     }//GEN-LAST:event_btnBackActionPerformed
 
-    private void resetSelection() {
-        selectedOrderId = -1;
-        tblOrders.clearSelection();
-        ((DefaultTableModel) tblOrderItems.getModel()).setRowCount(0);
-        cmbStatus.setSelectedIndex(0);
-        btnUpdateStatus.setEnabled(false);
-        lblCurrentStatus.setText("Select an order above");
-    }
-
     public static void main(String[] args) {
         java.awt.EventQueue.invokeLater(() -> new AdminOrdersFrame().setVisible(true));
     }
 
-    /** Renders the Status column with AppTheme colours. */
-    private static class StatusCellRenderer extends DefaultTableCellRenderer {
-        @Override
-        public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected,
-                boolean hasFocus, int row, int column) {
-            super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
-            if (!isSelected && value != null) {
-                setForeground(AppTheme.statusColor(value.toString()));
-                setFont(AppTheme.FONT_SUBHEAD);
-            }
-            return this;
-        }
-    }
-
     // Variables declaration - do not modify//GEN-BEGIN:variables
-    private javax.swing.JButton   btnBack;
-    private javax.swing.JButton   btnUpdateStatus;
-    private javax.swing.JButton   btnRefresh;
-    private javax.swing.JComboBox<String> cmbStatus;
-    private javax.swing.JScrollPane jScrollPane1;
-    private javax.swing.JScrollPane jScrollPane2;
-    private javax.swing.JLabel    lblOrderItems;
-    private javax.swing.JLabel    lblStatus;
-    private javax.swing.JLabel    lblTitle;
-    private javax.swing.JLabel    lblCurrentStatus;
-    private javax.swing.JTable    tblOrderItems;
     private javax.swing.JTable    tblOrders;
+    private javax.swing.JTable    tblItems;
+    private javax.swing.JComboBox<String> cmbStatus;
+    private javax.swing.JButton   btnUpdateStatus;
+    private javax.swing.JButton   btnBack;
     // End of variables declaration//GEN-END:variables
 }

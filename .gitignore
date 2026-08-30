@@ -17,6 +17,9 @@ nbdist/
 *.iml
 .vscode/
 
+# Claude Code agent workspace
+.claude/
+
 # OS
 .DS_Store
 Thumbs.db

@@ -14,8 +14,8 @@ public class AdminDashboardFrame extends javax.swing.JFrame {
     public AdminDashboardFrame() {
         initComponents();
         setTitle("City Bites - Admin Dashboard");
-        setMinimumSize(new Dimension(760, 520));
-        setSize(860, 580);
+        setMinimumSize(new Dimension(820, 560));
+        setSize(960, 640);
         setLocationRelativeTo(null);
         setResizable(true);
         loadSummaryCards();
@@ -29,10 +29,14 @@ public class AdminDashboardFrame extends javax.swing.JFrame {
             int totalCustomers = AuthService.countCustomers();
 
             cardPanel.removeAll();
-            cardPanel.add(AppTheme.summaryCard("Total Menu Items",   String.valueOf(totalFoods),     AppTheme.BRAND_SECONDARY));
-            cardPanel.add(AppTheme.summaryCard("Available Items",    String.valueOf(availableFoods), AppTheme.SUCCESS));
-            cardPanel.add(AppTheme.summaryCard("Pending Orders",     String.valueOf(pendingOrders),  AppTheme.WARNING));
-            cardPanel.add(AppTheme.summaryCard("Total Customers",    String.valueOf(totalCustomers), AppTheme.BRAND_PRIMARY));
+            cardPanel.add(AppTheme.summaryCard("Total Menu Items",
+                    String.valueOf(totalFoods),     AppTheme.BRAND_SECONDARY));
+            cardPanel.add(AppTheme.summaryCard("Available Items",
+                    String.valueOf(availableFoods), AppTheme.SUCCESS));
+            cardPanel.add(AppTheme.summaryCard("Pending Orders",
+                    String.valueOf(pendingOrders),  AppTheme.WARNING));
+            cardPanel.add(AppTheme.summaryCard("Total Customers",
+                    String.valueOf(totalCustomers), AppTheme.BRAND_ACCENT));
             cardPanel.revalidate();
             cardPanel.repaint();
         } catch (Exception e) {
@@ -52,75 +56,129 @@ public class AdminDashboardFrame extends javax.swing.JFrame {
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
 
-        // ── Header ──────────────────────────────────────────────
-        JPanel header = new JPanel(new BorderLayout());
-        header.setBackground(AppTheme.BG_HEADER);
-        header.setBorder(javax.swing.BorderFactory.createEmptyBorder(AppTheme.PAD_MD, AppTheme.PAD_LG, AppTheme.PAD_MD, AppTheme.PAD_LG));
-
-        lblTitle.setText("CITY BITES");
-        lblTitle.setFont(AppTheme.FONT_LOGO);
-        lblTitle.setForeground(AppTheme.BRAND_ACCENT);
-
-        lblWelcome.setText("Welcome, Administrator");
-        lblWelcome.setFont(AppTheme.FONT_BODY);
-        lblWelcome.setForeground(AppTheme.TEXT_WHITE);
-
-        JPanel headerText = new JPanel();
-        headerText.setBackground(AppTheme.BG_HEADER);
-        headerText.setLayout(new BoxLayout(headerText, BoxLayout.Y_AXIS));
-        headerText.add(lblTitle);
-        headerText.add(lblWelcome);
-        header.add(headerText, BorderLayout.WEST);
-
-        // ── Summary cards ────────────────────────────────────────
-        cardPanel.setBackground(AppTheme.BG_MAIN);
-        cardPanel.setLayout(new GridLayout(1, 4, 14, 0));
-        cardPanel.setBorder(javax.swing.BorderFactory.createEmptyBorder(AppTheme.PAD_LG, AppTheme.PAD_LG, AppTheme.PAD_MD, AppTheme.PAD_LG));
-
-        // ── Navigation buttons ───────────────────────────────────
-        btnManageFood = AppTheme.wideBtn("Manage Food Items",    AppTheme.BRAND_SECONDARY);
-        btnViewOrders = AppTheme.wideBtn("View Customer Orders", AppTheme.BRAND_PRIMARY);
-        btnLogout     = AppTheme.secondaryBtn("Logout");
-
-        btnManageFood.setAlignmentX(Component.CENTER_ALIGNMENT);
-        btnViewOrders.setAlignmentX(Component.CENTER_ALIGNMENT);
-        btnLogout.setAlignmentX(Component.CENTER_ALIGNMENT);
-
-        btnManageFood.addActionListener(this::btnManageFoodActionPerformed);
-        btnViewOrders.addActionListener(this::btnViewOrdersActionPerformed);
+        // ── Navigation header ────────────────────────────────────────
+        btnLogout = AppTheme.ghostBtn("Logout");
+        btnLogout.setForeground(new Color(150, 170, 190));
         btnLogout.addActionListener(this::btnLogoutActionPerformed);
 
-        JPanel navPanel = new JPanel();
-        navPanel.setBackground(AppTheme.BG_CARD);
-        navPanel.setBorder(AppTheme.cardBorder());
-        navPanel.setLayout(new BoxLayout(navPanel, BoxLayout.Y_AXIS));
+        JButton refreshBtn = AppTheme.ghostBtn("Refresh");
+        refreshBtn.setForeground(new Color(150, 170, 190));
+        refreshBtn.addActionListener(e -> loadSummaryCards());
 
-        JLabel navTitle = new JLabel("Quick Actions");
-        navTitle.setFont(AppTheme.FONT_HEADING);
-        navTitle.setForeground(AppTheme.TEXT_PRIMARY);
-        navTitle.setAlignmentX(Component.CENTER_ALIGNMENT);
+        JPanel header = AppTheme.navHeader("Admin Portal", "Welcome, Administrator",
+                                            refreshBtn, btnLogout);
 
-        navPanel.add(Box.createVerticalStrut(14));
-        navPanel.add(navTitle);
-        navPanel.add(Box.createVerticalStrut(20));
-        navPanel.add(btnManageFood);
-        navPanel.add(Box.createVerticalStrut(14));
-        navPanel.add(btnViewOrders);
-        navPanel.add(Box.createVerticalStrut(30));
-        navPanel.add(btnLogout);
-        navPanel.add(Box.createVerticalGlue());
+        // ── Summary cards grid ───────────────────────────────────────
+        cardPanel.setBackground(AppTheme.BG_MAIN);
+        cardPanel.setLayout(new GridLayout(1, 4, 14, 0));
+        cardPanel.setBorder(BorderFactory.createEmptyBorder(
+                AppTheme.PAD_LG, AppTheme.PAD_LG, AppTheme.PAD_MD, AppTheme.PAD_LG));
 
-        JPanel centerPanel = new JPanel(new BorderLayout(14, 0));
-        centerPanel.setBackground(AppTheme.BG_MAIN);
-        centerPanel.setBorder(javax.swing.BorderFactory.createEmptyBorder(0, AppTheme.PAD_LG, AppTheme.PAD_LG, AppTheme.PAD_LG));
-        centerPanel.add(navPanel, BorderLayout.CENTER);
+        // ── Section title ────────────────────────────────────────────
+        JLabel sectionTitle = new JLabel("Quick Actions");
+        sectionTitle.setFont(AppTheme.FONT_HEADING);
+        sectionTitle.setForeground(AppTheme.TEXT_PRIMARY);
+
+        // ── Action cards ─────────────────────────────────────────────
+        JPanel manageFoodCard = buildActionCard(
+            "Manage Food Items",
+            "Add, edit or remove menu items and manage stock",
+            AppTheme.BRAND_SECONDARY,
+            this::btnManageFoodActionPerformed
+        );
+
+        JPanel viewOrdersCard = buildActionCard(
+            "Customer Orders",
+            "View and update status of all customer orders",
+            AppTheme.BRAND_ACCENT,
+            this::btnViewOrdersActionPerformed
+        );
+
+        JPanel actionsRow = new JPanel(new GridLayout(1, 2, 14, 0));
+        actionsRow.setBackground(AppTheme.BG_MAIN);
+        actionsRow.setBorder(BorderFactory.createEmptyBorder(
+                0, AppTheme.PAD_LG, AppTheme.PAD_LG, AppTheme.PAD_LG));
+        actionsRow.add(manageFoodCard);
+        actionsRow.add(viewOrdersCard);
+
+        // ── Section header bar ───────────────────────────────────────
+        JPanel sectionBar = new JPanel(new FlowLayout(FlowLayout.LEFT, AppTheme.PAD_LG, 8));
+        sectionBar.setBackground(AppTheme.BG_MAIN);
+        sectionBar.add(sectionTitle);
+
+        // ── Content area ─────────────────────────────────────────────
+        JPanel content = new JPanel(new BorderLayout());
+        content.setBackground(AppTheme.BG_MAIN);
+        content.add(cardPanel,  BorderLayout.NORTH);
+        content.add(sectionBar, BorderLayout.CENTER);
+        content.add(actionsRow, BorderLayout.SOUTH);
 
         getContentPane().setBackground(AppTheme.BG_MAIN);
         getContentPane().setLayout(new BorderLayout());
-        getContentPane().add(header,      BorderLayout.NORTH);
-        getContentPane().add(cardPanel,   BorderLayout.CENTER);
-        getContentPane().add(centerPanel, BorderLayout.SOUTH);
+        getContentPane().add(header,  BorderLayout.NORTH);
+        getContentPane().add(content, BorderLayout.CENTER);
     }// </editor-fold>//GEN-END:initComponents
+
+    /** Builds a clickable action card with accent stripe and description. */
+    private JPanel buildActionCard(String title, String description, Color accent,
+                                   java.awt.event.ActionListener action) {
+        JPanel card = new JPanel(new BorderLayout());
+        card.setBackground(AppTheme.BG_CARD);
+        card.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createMatteBorder(0, 5, 0, 0, accent),
+            BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(AppTheme.BORDER),
+                BorderFactory.createEmptyBorder(20, 20, 20, 20))));
+        card.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+
+        JLabel titleLbl = new JLabel(title);
+        titleLbl.setFont(AppTheme.FONT_HEADING);
+        titleLbl.setForeground(AppTheme.TEXT_PRIMARY);
+
+        JLabel descLbl = new JLabel(
+            "<html><body style='width:200px'>" + description + "</body></html>");
+        descLbl.setFont(AppTheme.FONT_BODY);
+        descLbl.setForeground(AppTheme.TEXT_MUTED);
+
+        JButton btn = AppTheme.primaryBtn("Open");
+        btn.setBackground(accent);
+        btn.addActionListener(action);
+
+        JPanel text = new JPanel();
+        text.setBackground(AppTheme.BG_CARD);
+        text.setLayout(new BoxLayout(text, BoxLayout.Y_AXIS));
+        text.add(titleLbl);
+        text.add(Box.createVerticalStrut(8));
+        text.add(descLbl);
+
+        JPanel btnWrap = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+        btnWrap.setBackground(AppTheme.BG_CARD);
+        btnWrap.add(btn);
+
+        card.add(text,    BorderLayout.CENTER);
+        card.add(btnWrap, BorderLayout.EAST);
+
+        card.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent e) {
+                action.actionPerformed(null);
+            }
+            @Override
+            public void mouseEntered(java.awt.event.MouseEvent e) {
+                card.setBackground(AppTheme.BG_ACCENT_SOFT);
+                text.setBackground(AppTheme.BG_ACCENT_SOFT);
+                btnWrap.setBackground(AppTheme.BG_ACCENT_SOFT);
+            }
+            @Override
+            public void mouseExited(java.awt.event.MouseEvent e) {
+                card.setBackground(AppTheme.BG_CARD);
+                text.setBackground(AppTheme.BG_CARD);
+                btnWrap.setBackground(AppTheme.BG_CARD);
+            }
+        });
+
+        return card;
+    }
 
     private void btnManageFoodActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnManageFoodActionPerformed
         new FoodManagementFrame().setVisible(true);
@@ -133,9 +191,8 @@ public class AdminDashboardFrame extends javax.swing.JFrame {
     }//GEN-LAST:event_btnViewOrdersActionPerformed
 
     private void btnLogoutActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnLogoutActionPerformed
-        int r = JOptionPane.showConfirmDialog(this, "Are you sure you want to logout?",
-                "Confirm Logout", JOptionPane.YES_NO_OPTION);
-        if (r == JOptionPane.YES_OPTION) {
+        if (AppTheme.showConfirm(this, "Confirm Logout",
+                "Are you sure you want to logout?")) {
             new AdminLoginFrame().setVisible(true);
             dispose();
         }

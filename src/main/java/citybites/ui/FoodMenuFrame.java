@@ -16,14 +16,14 @@ public class FoodMenuFrame extends javax.swing.JFrame {
     private static final java.util.logging.Logger logger =
             java.util.logging.Logger.getLogger(FoodMenuFrame.class.getName());
 
-    private List<FoodItem> allItems = new ArrayList<>();
+    private List<FoodItem> allItems      = new ArrayList<>();
     private List<FoodItem> displayedItems = new ArrayList<>();
 
     public FoodMenuFrame() {
         initComponents();
         setTitle("City Bites - Food Menu");
         setMinimumSize(new Dimension(860, 600));
-        setSize(980, 700);
+        setSize(1020, 720);
         setLocationRelativeTo(null);
         setResizable(true);
         loadMenu(null);
@@ -43,15 +43,22 @@ public class FoodMenuFrame extends javax.swing.JFrame {
             }
             renderCards();
         } catch (Exception e) {
-            JOptionPane.showMessageDialog(this, "Error loading menu: " + e.getMessage(),
-                    "Database Error", JOptionPane.ERROR_MESSAGE);
+            AppTheme.showError(this, "Database Error",
+                    "Error loading menu: " + e.getMessage());
         }
     }
 
     private void renderCards() {
         cardsPanel.removeAll();
-        for (FoodItem food : displayedItems) {
-            cardsPanel.add(buildFoodCard(food));
+        if (displayedItems.isEmpty()) {
+            cardsPanel.setLayout(new BorderLayout());
+            cardsPanel.add(AppTheme.emptyStatePanel("", "No items found",
+                    "Try a different search term"), BorderLayout.CENTER);
+        } else {
+            cardsPanel.setLayout(new WrapLayout(FlowLayout.LEFT, 16, 16));
+            for (FoodItem food : displayedItems) {
+                cardsPanel.add(buildFoodCard(food));
+            }
         }
         cardsPanel.revalidate();
         cardsPanel.repaint();
@@ -61,17 +68,17 @@ public class FoodMenuFrame extends javax.swing.JFrame {
         JPanel card = new JPanel();
         card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
         card.setBackground(AppTheme.BG_CARD);
-        card.setBorder(javax.swing.BorderFactory.createCompoundBorder(
-            javax.swing.BorderFactory.createLineBorder(AppTheme.BORDER),
-            javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12)));
-        card.setPreferredSize(new Dimension(200, 280));
-        card.setMaximumSize(new Dimension(200, 280));
+        card.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(AppTheme.BORDER),
+            BorderFactory.createEmptyBorder(10, 12, 12, 12)));
+        card.setPreferredSize(new Dimension(210, 300));
+        card.setMaximumSize(new Dimension(210, 300));
 
         // Image
         JLabel imgLabel = new JLabel();
         imgLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-        imgLabel.setIcon(ImageManager.loadScaled(food.getImagePath(), 160, 110));
-        imgLabel.setBorder(javax.swing.BorderFactory.createLineBorder(AppTheme.BORDER));
+        imgLabel.setIcon(ImageManager.loadScaled(food.getImagePath(), 170, 115));
+        imgLabel.setBorder(BorderFactory.createLineBorder(AppTheme.BORDER));
 
         // Name
         JLabel nameLabel = new JLabel(food.getFoodName());
@@ -83,30 +90,32 @@ public class FoodMenuFrame extends javax.swing.JFrame {
         // Price
         JLabel priceLabel = new JLabel("Rs. " + String.format("%.2f", food.getPrice()));
         priceLabel.setFont(AppTheme.FONT_HEADING);
-        priceLabel.setForeground(AppTheme.BRAND_PRIMARY);
+        priceLabel.setForeground(AppTheme.BRAND_ACCENT);
         priceLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
 
         // Stock badge
-        String stockText = food.getStockQuantity() > 0
+        boolean inStock  = food.getStockQuantity() > 0;
+        String stockText = inStock
                 ? "In stock: " + food.getStockQuantity()
                 : "Out of stock";
         JLabel stockLabel = new JLabel(stockText);
         stockLabel.setFont(AppTheme.FONT_SMALL);
-        stockLabel.setForeground(food.getStockQuantity() > 0 ? AppTheme.SUCCESS : AppTheme.DANGER);
+        stockLabel.setForeground(inStock ? AppTheme.SUCCESS : AppTheme.DANGER);
         stockLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
 
         // Quantity spinner
-        JSpinner spn = new JSpinner(new SpinnerNumberModel(1, 1, Math.max(1, food.getStockQuantity()), 1));
+        JSpinner spn = new JSpinner(
+            new SpinnerNumberModel(1, 1, Math.max(1, food.getStockQuantity()), 1));
         spn.setFont(AppTheme.FONT_BODY);
         spn.setMaximumSize(new Dimension(90, 28));
         spn.setAlignmentX(Component.CENTER_ALIGNMENT);
 
         // Add to cart button
         JButton addBtn = AppTheme.primaryBtn("Add to Cart");
-        addBtn.setPreferredSize(new Dimension(150, 30));
-        addBtn.setMaximumSize(new Dimension(150, 30));
+        addBtn.setPreferredSize(new Dimension(160, AppTheme.BTN_H));
+        addBtn.setMaximumSize(new Dimension(Integer.MAX_VALUE, AppTheme.BTN_H));
         addBtn.setAlignmentX(Component.CENTER_ALIGNMENT);
-        addBtn.setEnabled(food.getStockQuantity() > 0);
+        addBtn.setEnabled(inStock);
         addBtn.addActionListener(e -> addToCart(food, (Integer) spn.getValue()));
 
         card.add(imgLabel);
@@ -126,14 +135,15 @@ public class FoodMenuFrame extends javax.swing.JFrame {
 
     private void addToCart(FoodItem food, int quantity) {
         if (food.getStockQuantity() < quantity) {
-            JOptionPane.showMessageDialog(this,
-                    "Only " + food.getStockQuantity() + " unit(s) available.",
-                    "Insufficient Stock", JOptionPane.WARNING_MESSAGE);
+            AppTheme.showWarning(this, "Insufficient Stock",
+                    "Only " + food.getStockQuantity() + " unit(s) available.");
             return;
         }
         CartItem existing = null;
         for (CartItem item : DataStore.cartItems) {
-            if (item.getFoodItem().getFoodId() == food.getFoodId()) { existing = item; break; }
+            if (item.getFoodItem().getFoodId() == food.getFoodId()) {
+                existing = item; break;
+            }
         }
         if (existing != null) {
             existing.setQuantity(existing.getQuantity() + quantity);
@@ -141,10 +151,11 @@ public class FoodMenuFrame extends javax.swing.JFrame {
             DataStore.cartItems.add(new CartItem(food, quantity));
         }
         int total = DataStore.cartItems.stream().mapToInt(CartItem::getQuantity).sum();
-        btnViewCart.setText("View Cart  (" + total + ")");
-        JOptionPane.showMessageDialog(this,
-                food.getFoodName() + " \u00d7" + quantity + " added to cart!",
-                "Added to Cart", JOptionPane.INFORMATION_MESSAGE);
+        btnViewCart.setText("Cart (" + total + ")");
+
+        // Non-blocking toast — replaces JOptionPane for add-to-cart feedback
+        AppTheme.showToast(this,
+                food.getFoodName() + " \u00d7" + quantity + " added to cart!");
     }
 
     @SuppressWarnings("unchecked")
@@ -158,35 +169,52 @@ public class FoodMenuFrame extends javax.swing.JFrame {
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
 
-        // ── Header ───────────────────────────────────────────────
-        JPanel header = AppTheme.headerPanel("Food Menu");
-
-        // ── Search bar ───────────────────────────────────────────
-        AppTheme.styleField(txtSearch);
-        txtSearch.setPreferredSize(new Dimension(260, 30));
-        txtSearch.putClientProperty("JTextField.placeholderText", "Search food...");
-
-        btnSearch   = AppTheme.secondaryBtn("Search");
-        btnViewCart = AppTheme.primaryBtn("View Cart");
-        btnBack     = AppTheme.secondaryBtn("Back");
-
-        btnSearch.addActionListener(e -> loadMenu(txtSearch.getText()));
-        txtSearch.addActionListener(e -> loadMenu(txtSearch.getText()));
+        // ── Navigation header ────────────────────────────────────────
+        int cartQty = DataStore.cartItems.stream().mapToInt(CartItem::getQuantity).sum();
+        btnViewCart = AppTheme.primaryBtn(cartQty > 0 ? "Cart (" + cartQty + ")" : "Cart");
         btnViewCart.addActionListener(this::btnViewCartActionPerformed);
+
+        btnBack = AppTheme.ghostBtn("← Back");
+        btnBack.setForeground(new Color(150, 170, 190));
         btnBack.addActionListener(this::btnBackActionPerformed);
+
+        JPanel header = AppTheme.navHeader("Food Menu", null, btnViewCart, btnBack);
+
+        // ── Search toolbar ───────────────────────────────────────────
+        AppTheme.styleField(txtSearch);
+        txtSearch.setPreferredSize(new Dimension(280, AppTheme.BTN_H));
+        txtSearch.putClientProperty("JTextField.placeholderText", "Search food items...");
+
+        btnSearch = AppTheme.secondaryBtn("Search");
+        btnSearch.addActionListener(e -> {
+            allItems.clear();   // force refresh from DB on each search
+            loadMenu(txtSearch.getText());
+        });
+        txtSearch.addActionListener(e -> {
+            allItems.clear();
+            loadMenu(txtSearch.getText());
+        });
+
+        JButton clearSearchBtn = AppTheme.ghostBtn("Clear");
+        clearSearchBtn.addActionListener(e -> {
+            txtSearch.setText("");
+            allItems.clear();
+            loadMenu(null);
+        });
 
         JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 10));
         toolbar.setBackground(AppTheme.BG_MAIN);
-        toolbar.setBorder(javax.swing.BorderFactory.createMatteBorder(0, 0, 1, 0, AppTheme.BORDER));
-        toolbar.add(new JLabel("Search:") {{ setFont(AppTheme.FONT_BODY); setForeground(AppTheme.TEXT_PRIMARY); }});
+        toolbar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, AppTheme.BORDER));
+        JLabel searchLbl = new JLabel("Search:");
+        searchLbl.setFont(AppTheme.FONT_BODY);
+        searchLbl.setForeground(AppTheme.TEXT_PRIMARY);
+        toolbar.add(searchLbl);
         toolbar.add(txtSearch);
         toolbar.add(btnSearch);
-        toolbar.add(Box.createHorizontalStrut(30));
-        toolbar.add(btnViewCart);
-        toolbar.add(btnBack);
+        toolbar.add(clearSearchBtn);
 
-        // ── Cards scroll area ────────────────────────────────────
-        cardsPanel = new JPanel(new WrapLayout(FlowLayout.LEFT, 14, 14));
+        // ── Cards scroll area ────────────────────────────────────────
+        cardsPanel = new JPanel(new WrapLayout(FlowLayout.LEFT, 16, 16));
         cardsPanel.setBackground(AppTheme.BG_MAIN);
 
         JScrollPane scroll = new JScrollPane(cardsPanel);
@@ -195,19 +223,10 @@ public class FoodMenuFrame extends javax.swing.JFrame {
         scroll.setBackground(AppTheme.BG_MAIN);
         scroll.getViewport().setBackground(AppTheme.BG_MAIN);
 
+        // ── Root layout ──────────────────────────────────────────────
         getContentPane().setBackground(AppTheme.BG_MAIN);
         getContentPane().setLayout(new BorderLayout());
-        getContentPane().add(header,  BorderLayout.NORTH);
-        getContentPane().add(toolbar, BorderLayout.CENTER);
-
-        JPanel south = new JPanel(new BorderLayout());
-        south.setBackground(AppTheme.BG_MAIN);
-        south.add(scroll, BorderLayout.CENTER);
-        getContentPane().add(south, BorderLayout.SOUTH);
-
-        // Better layout: toolbar below header, cards fill center
-        getContentPane().setLayout(new BorderLayout());
-        getContentPane().add(header,  BorderLayout.NORTH);
+        getContentPane().add(header, BorderLayout.NORTH);
 
         JPanel body = new JPanel(new BorderLayout());
         body.setBackground(AppTheme.BG_MAIN);
@@ -243,40 +262,46 @@ public class FoodMenuFrame extends javax.swing.JFrame {
      */
     private static class WrapLayout extends FlowLayout {
         WrapLayout(int align, int hgap, int vgap) { super(align, hgap, vgap); }
+
         @Override
         public Dimension preferredLayoutSize(Container target) {
             return layoutSize(target, true);
         }
+
         @Override
         public Dimension minimumLayoutSize(Container target) {
             return layoutSize(target, false);
         }
+
         private Dimension layoutSize(Container target, boolean preferred) {
             synchronized (target.getTreeLock()) {
                 int targetWidth = target.getSize().width;
                 if (targetWidth == 0) targetWidth = Integer.MAX_VALUE;
                 int hgap = getHgap(), vgap = getVgap();
-                Insets insets = target.getInsets();
-                int maxWidth = targetWidth - insets.left - insets.right - hgap * 2;
-                int width = 0, height = insets.top + insets.bottom + vgap * 2;
-                int rowWidth = 0, rowHeight = 0;
-                int nmembers = target.getComponentCount();
+                Insets insets  = target.getInsets();
+                int maxWidth   = targetWidth - insets.left - insets.right - hgap * 2;
+                int width      = 0;
+                int height     = insets.top + insets.bottom + vgap * 2;
+                int rowWidth   = 0, rowHeight = 0;
+                int nmembers   = target.getComponentCount();
                 for (int i = 0; i < nmembers; i++) {
                     Component m = target.getComponent(i);
                     if (m.isVisible()) {
                         Dimension d = preferred ? m.getPreferredSize() : m.getMinimumSize();
                         if (rowWidth + d.width > maxWidth && rowWidth > 0) {
-                            height += rowHeight + vgap;
-                            rowWidth = 0; rowHeight = 0;
+                            height   += rowHeight + vgap;
+                            rowWidth  = 0;
+                            rowHeight = 0;
                         }
                         if (rowWidth > 0) rowWidth += hgap;
-                        rowWidth += d.width;
-                        rowHeight = Math.max(rowHeight, d.height);
-                        width = Math.max(width, rowWidth);
+                        rowWidth  += d.width;
+                        rowHeight  = Math.max(rowHeight, d.height);
+                        width      = Math.max(width, rowWidth);
                     }
                 }
                 height += rowHeight;
-                return new Dimension(width + insets.left + insets.right + hgap * 2, height);
+                return new Dimension(
+                    width + insets.left + insets.right + hgap * 2, height);
             }
         }
     }
