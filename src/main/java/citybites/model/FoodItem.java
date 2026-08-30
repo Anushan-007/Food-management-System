@@ -6,7 +6,8 @@ public class FoodItem {
     private String  foodName;
     private double  price;
     private boolean available;
-    private String  imagePath;  // optional; may be null
+    private int     stockQuantity;
+    private String  imagePath;
 
     public FoodItem() {}
 
@@ -17,18 +18,21 @@ public class FoodItem {
         this.available = available;
     }
 
-    public int getFoodId()              { return foodId;    }
-    public void setFoodId(int v)        { foodId = v;       }
+    public int     getFoodId()              { return foodId;        }
+    public void    setFoodId(int v)         { foodId = v;           }
+    public String  getFoodName()            { return foodName;      }
+    public void    setFoodName(String v)    { foodName = v;         }
+    public double  getPrice()               { return price;         }
+    public void    setPrice(double v)       { price = v;            }
+    public boolean isAvailable()            { return available;     }
+    public void    setAvailable(boolean v)  { available = v;        }
+    public int     getStockQuantity()       { return stockQuantity; }
+    public void    setStockQuantity(int v)  { stockQuantity = v;    }
+    public String  getImagePath()           { return imagePath;     }
+    public void    setImagePath(String v)   { imagePath = v;        }
 
-    public String getFoodName()         { return foodName;  }
-    public void setFoodName(String v)   { foodName = v;     }
-
-    public double getPrice()            { return price;     }
-    public void setPrice(double v)      { price = v;        }
-
-    public boolean isAvailable()        { return available; }
-    public void setAvailable(boolean v) { available = v;    }
-
-    public String getImagePath()        { return imagePath; }
-    public void setImagePath(String v)  { imagePath = v;    }
+    @Override
+    public String toString() {
+        return foodName;
+    }
 }

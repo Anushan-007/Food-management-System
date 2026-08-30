@@ -1,0 +1,28 @@
+# Maven build output
+target/
+
+# Database credentials — never commit
+src/main/resources/db.properties
+
+# NetBeans project files
+nbproject/private/
+build/
+nbbuild/
+dist/
+nbdist/
+.nb-gradle/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Claude Code agent workspace
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Food images managed folder
+food-images/

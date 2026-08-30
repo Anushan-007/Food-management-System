@@ -2,336 +2,476 @@ package citybites.ui;
 
 import citybites.model.FoodItem;
 import citybites.service.FoodService;
+import citybites.util.ImageManager;
 import java.awt.*;
+import java.io.File;
+import java.util.List;
 import javax.swing.*;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
+import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.table.DefaultTableModel;
 
 public class FoodManagementFrame extends javax.swing.JFrame {
 
-    private int selectedFoodId = -1;
     private static final java.util.logging.Logger logger =
             java.util.logging.Logger.getLogger(FoodManagementFrame.class.getName());
+
+    private DefaultTableModel tableModel;
+    /** Temporary source file chosen via JFileChooser. Preview-only — never stored. */
+    private java.io.File selectedSourceFile = null;
+    /** Managed relative filename stored in MySQL. Null until a row is selected or image imported. */
+    private String persistedImagePath = null;
 
     public FoodManagementFrame() {
         initComponents();
         setTitle("City Bites - Food Management");
-        setSize(950, 650);
+        setMinimumSize(new Dimension(1000, 640));
+        setSize(1200, 740);
         setLocationRelativeTo(null);
-        setResizable(false);
-
-        chkAvailable.setSelected(true);
-        btnUpdate.setEnabled(false);
-        btnDelete.setEnabled(false);
-
-        applyTableStyle(jTable1);
-
-        jTable1.getColumnModel().getColumn(0).setPreferredWidth(60);
-        jTable1.getColumnModel().getColumn(1).setPreferredWidth(310);
-        jTable1.getColumnModel().getColumn(2).setPreferredWidth(130);
-        jTable1.getColumnModel().getColumn(3).setPreferredWidth(110);
-
+        setResizable(true);
         loadFoodTable();
-
-        jTable1.getSelectionModel().addListSelectionListener(event -> {
-            if (!event.getValueIsAdjusting()) selectFoodFromTable();
-        });
-    }
-
-    private void applyTableStyle(JTable table) {
-        table.setFont(new Font("Segoe UI", Font.PLAIN, 13));
-        table.setRowHeight(24);
-        table.setGridColor(new Color(220, 225, 230));
-        table.setSelectionBackground(new Color(210, 228, 248));
-        table.setSelectionForeground(new Color(30, 30, 30));
-        table.getTableHeader().setReorderingAllowed(false);
-        table.setFillsViewportHeight(true);
-
-        table.getTableHeader().setDefaultRenderer(
-                new javax.swing.table.DefaultTableCellRenderer() {
-            {
-                setOpaque(true);
-                setBackground(new Color(52, 73, 94));
-                setForeground(Color.WHITE);
-                setFont(new Font("Segoe UI", Font.BOLD, 13));
-                setBorder(BorderFactory.createCompoundBorder(
-                        BorderFactory.createMatteBorder(0, 0, 0, 1, new Color(80, 100, 120)),
-                        BorderFactory.createEmptyBorder(4, 8, 4, 8)));
-            }
-            @Override
-            public Component getTableCellRendererComponent(
-                    JTable tbl, Object value, boolean isSelected,
-                    boolean hasFocus, int row, int column) {
-                setText(value != null ? value.toString() : "");
-                return this;
-            }
-        });
-    }
-
-    private void loadFoodTable() {
-        DefaultTableModel model = (DefaultTableModel) jTable1.getModel();
-        model.setRowCount(0);
-        try {
-            for (FoodItem food : FoodService.getAllFoodItems()) {
-                model.addRow(new Object[]{
-                    food.getFoodId(),
-                    food.getFoodName(),
-                    String.format("%.2f", food.getPrice()),
-                    food.isAvailable() ? "Yes" : "No"
-                });
-            }
-        } catch (Exception e) {
-            JOptionPane.showMessageDialog(this,
-                    "Error loading food items: " + e.getMessage(),
-                    "Database Error", JOptionPane.ERROR_MESSAGE);
-        }
-    }
-
-    private void selectFoodFromTable() {
-        int selectedRow = jTable1.getSelectedRow();
-        if (selectedRow == -1) return;
-        selectedFoodId = Integer.parseInt(jTable1.getValueAt(selectedRow, 0).toString());
-        txtFoodName.setText(jTable1.getValueAt(selectedRow, 1).toString());
-        txtPrice.setText(jTable1.getValueAt(selectedRow, 2).toString());
-        chkAvailable.setSelected(jTable1.getValueAt(selectedRow, 3).toString().equalsIgnoreCase("Yes"));
-        btnAdd.setEnabled(false);
-        btnUpdate.setEnabled(true);
-        btnDelete.setEnabled(true);
     }
 
     @SuppressWarnings("unchecked")
     // <editor-fold defaultstate="collapsed" desc="Generated Code">//GEN-BEGIN:initComponents
     private void initComponents() {
-
-        lblTitle     = new javax.swing.JLabel();
-        lblFoodName  = new javax.swing.JLabel();
-        txtFoodName  = new javax.swing.JTextField();
-        lblPrice     = new javax.swing.JLabel();
-        txtPrice     = new javax.swing.JTextField();
-        chkAvailable = new javax.swing.JCheckBox();
-        btnAdd       = new javax.swing.JButton();
-        btnUpdate    = new javax.swing.JButton();
-        btnDelete    = new javax.swing.JButton();
-        btnClear     = new javax.swing.JButton();
-        btnBack      = new javax.swing.JButton();
-        jScrollPane1 = new javax.swing.JScrollPane();
-        jTable1      = new javax.swing.JTable();
+        txtName        = new javax.swing.JTextField();
+        txtPrice       = new javax.swing.JTextField();
+        txtStock       = new javax.swing.JTextField();
+        txtSearch      = new javax.swing.JTextField();
+        btnAdd         = new javax.swing.JButton();
+        btnUpdate      = new javax.swing.JButton();
+        btnDelete      = new javax.swing.JButton();
+        btnClear       = new javax.swing.JButton();
+        btnPickImage   = new javax.swing.JButton();
+        lblImagePreview = new javax.swing.JLabel();
+        tblFood        = new javax.swing.JTable();
+        lblName        = new javax.swing.JLabel();
+        lblPrice       = new javax.swing.JLabel();
+        lblStock       = new javax.swing.JLabel();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
 
-        lblTitle.setText("Food Management");
-        lblTitle.setFont(new Font("Segoe UI", Font.BOLD, 22));
-        lblTitle.setForeground(new Color(44, 62, 80));
+        // ── Navigation header ────────────────────────────────────────
+        JButton refreshBtn = AppTheme.secondaryBtn("Refresh");
+        refreshBtn.addActionListener(e -> loadFoodTable());
 
-        Font labelFont = new Font("Segoe UI", Font.PLAIN, 13);
-        lblFoodName.setText("Food Name:"); lblFoodName.setFont(labelFont);
-        lblPrice.setText("Price (Rs.):"); lblPrice.setFont(labelFont);
+        JButton backBtn = AppTheme.ghostBtn("← Back");
+        backBtn.setForeground(new Color(150, 170, 190));
+        backBtn.addActionListener(e -> btnBackActionPerformed(null));
 
-        txtFoodName.setFont(new Font("Segoe UI", Font.PLAIN, 13));
-        txtFoodName.setPreferredSize(new Dimension(230, 26));
-        txtPrice.setFont(new Font("Segoe UI", Font.PLAIN, 13));
-        txtPrice.setPreferredSize(new Dimension(120, 26));
+        JPanel header = AppTheme.navHeader("Food Management", null, refreshBtn, backBtn);
 
-        chkAvailable.setSelected(true);
-        chkAvailable.setText("Available");
-        chkAvailable.setFont(labelFont);
-        chkAvailable.setBackground(Color.WHITE);
+        // ── Form panel (left) ────────────────────────────────────────
+        lblName.setText("Food Name");
+        lblName.setFont(AppTheme.FONT_LABEL);
+        lblName.setForeground(AppTheme.TEXT_PRIMARY);
 
-        Font btnFont = new Font("Segoe UI", Font.BOLD, 12);
-        Dimension btnSize = new Dimension(90, 28);
+        lblPrice.setText("Price (Rs.)");
+        lblPrice.setFont(AppTheme.FONT_LABEL);
+        lblPrice.setForeground(AppTheme.TEXT_PRIMARY);
 
-        btnAdd.setText("Add");       btnAdd.setFont(btnFont);    btnAdd.setPreferredSize(btnSize);
-        btnAdd.addActionListener(this::btnAddActionPerformed);
+        lblStock.setText("Stock Quantity");
+        lblStock.setFont(AppTheme.FONT_LABEL);
+        lblStock.setForeground(AppTheme.TEXT_PRIMARY);
 
-        btnUpdate.setText("Update"); btnUpdate.setFont(btnFont); btnUpdate.setPreferredSize(btnSize);
-        btnUpdate.addActionListener(this::btnUpdateActionPerformed);
+        AppTheme.styleField(txtName);
+        AppTheme.styleField(txtPrice);
+        AppTheme.styleField(txtStock);
 
-        btnDelete.setText("Delete"); btnDelete.setFont(btnFont); btnDelete.setPreferredSize(btnSize);
-        btnDelete.addActionListener(this::btnDeleteActionPerformed);
+        // Image preview
+        lblImagePreview.setPreferredSize(new Dimension(180, 120));
+        lblImagePreview.setMinimumSize(new Dimension(180, 120));
+        lblImagePreview.setMaximumSize(new Dimension(180, 120));
+        lblImagePreview.setBorder(BorderFactory.createLineBorder(AppTheme.BORDER));
+        lblImagePreview.setHorizontalAlignment(SwingConstants.CENTER);
+        lblImagePreview.setText("No Image");
+        lblImagePreview.setFont(AppTheme.FONT_SMALL);
+        lblImagePreview.setForeground(AppTheme.TEXT_MUTED);
+        lblImagePreview.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        btnClear.setText("Clear");
-        btnClear.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        btnClear.setPreferredSize(btnSize);
-        btnClear.addActionListener(this::btnClearActionPerformed);
+        btnPickImage = AppTheme.secondaryBtn("Choose Image...");
+        btnPickImage.setAlignmentX(Component.CENTER_ALIGNMENT);
+        btnPickImage.setMaximumSize(new Dimension(Integer.MAX_VALUE, AppTheme.BTN_H));
+        btnPickImage.addActionListener(e -> btnPickImageActionPerformed(null));
 
-        btnBack.setText("Back");
-        btnBack.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        btnBack.setPreferredSize(btnSize);
-        btnBack.addActionListener(this::btnBackActionPerformed);
+        // Form fields in GridBagLayout
+        JPanel fields = new JPanel(new GridBagLayout());
+        fields.setBackground(AppTheme.BG_CARD);
+        GridBagConstraints c = new GridBagConstraints();
+        c.fill   = GridBagConstraints.HORIZONTAL;
+        c.anchor = GridBagConstraints.WEST;
+        c.weightx = 1;
+        c.insets  = new Insets(5, 0, 5, 0);
 
-        jTable1.setModel(new javax.swing.table.DefaultTableModel(
-                new Object[][]{},
-                new String[]{"ID", "Food Name", "Price", "Available"}
-        ) {
-            @Override public boolean isCellEditable(int row, int column) { return false; }
+        c.gridx = 0; c.gridy = 0; fields.add(lblName,  c);
+        c.gridy = 1;               fields.add(txtName,  c);
+        c.gridy = 2;               fields.add(lblPrice, c);
+        c.gridy = 3;               fields.add(txtPrice, c);
+        c.gridy = 4;               fields.add(lblStock, c);
+        c.gridy = 5;               fields.add(txtStock, c);
+
+        // Action buttons
+        btnAdd    = AppTheme.primaryBtn("Add Item");
+        btnUpdate = AppTheme.secondaryBtn("Update Item");
+        btnDelete = AppTheme.dangerBtn("Delete Item");
+        btnClear  = AppTheme.ghostBtn("Clear Form");
+
+        btnAdd.setMaximumSize(new Dimension(Integer.MAX_VALUE, AppTheme.BTN_H));
+        btnUpdate.setMaximumSize(new Dimension(Integer.MAX_VALUE, AppTheme.BTN_H));
+        btnDelete.setMaximumSize(new Dimension(Integer.MAX_VALUE, AppTheme.BTN_H));
+        btnClear.setMaximumSize(new Dimension(Integer.MAX_VALUE, AppTheme.BTN_H));
+
+        btnAdd.addActionListener(e -> btnAddActionPerformed(null));
+        btnUpdate.addActionListener(e -> btnUpdateActionPerformed(null));
+        btnDelete.addActionListener(e -> btnDeleteActionPerformed(null));
+        btnClear.addActionListener(e -> btnClearActionPerformed(null));
+
+        JPanel formCard = new JPanel();
+        formCard.setBackground(AppTheme.BG_CARD);
+        formCard.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(AppTheme.BORDER),
+            BorderFactory.createEmptyBorder(20, 20, 20, 20)));
+        formCard.setLayout(new BoxLayout(formCard, BoxLayout.Y_AXIS));
+
+        JLabel formTitle = new JLabel("Food Details");
+        formTitle.setFont(AppTheme.FONT_SUBHEAD);
+        formTitle.setForeground(AppTheme.TEXT_PRIMARY);
+        formTitle.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        fields.setAlignmentX(Component.LEFT_ALIGNMENT);
+        btnAdd.setAlignmentX(Component.LEFT_ALIGNMENT);
+        btnUpdate.setAlignmentX(Component.LEFT_ALIGNMENT);
+        btnDelete.setAlignmentX(Component.LEFT_ALIGNMENT);
+        btnClear.setAlignmentX(Component.LEFT_ALIGNMENT);
+        btnPickImage.setAlignmentX(Component.LEFT_ALIGNMENT);
+        btnPickImage.setMaximumSize(new Dimension(Integer.MAX_VALUE, AppTheme.BTN_H));
+
+        JPanel imgWrapper = new JPanel();
+        imgWrapper.setLayout(new BoxLayout(imgWrapper, BoxLayout.Y_AXIS));
+        imgWrapper.setBackground(AppTheme.BG_CARD);
+        imgWrapper.setAlignmentX(Component.LEFT_ALIGNMENT);
+        imgWrapper.add(lblImagePreview);
+        imgWrapper.add(Box.createVerticalStrut(6));
+        imgWrapper.add(btnPickImage);
+
+        formCard.add(formTitle);
+        formCard.add(Box.createVerticalStrut(16));
+        formCard.add(fields);
+        formCard.add(Box.createVerticalStrut(12));
+        formCard.add(imgWrapper);
+        formCard.add(Box.createVerticalStrut(16));
+        formCard.add(btnAdd);
+        formCard.add(Box.createVerticalStrut(6));
+        formCard.add(btnUpdate);
+        formCard.add(Box.createVerticalStrut(6));
+        formCard.add(btnDelete);
+        formCard.add(Box.createVerticalStrut(6));
+        formCard.add(btnClear);
+        formCard.add(Box.createVerticalGlue());
+
+        JScrollPane formScroll = new JScrollPane(formCard);
+        formScroll.setBorder(null);
+        formScroll.setPreferredSize(new Dimension(280, 0));
+
+        // ── Table panel (right) ──────────────────────────────────────
+        String[] columns = {"ID", "Name", "Price (Rs.)", "Stock", "Image"};
+        tableModel = new DefaultTableModel(columns, 0) {
+            @Override public boolean isCellEditable(int r, int c2) { return false; }
+        };
+        tblFood = new javax.swing.JTable(tableModel);
+        AppTheme.styleTable(tblFood);
+        tblFood.getColumnModel().getColumn(0).setMaxWidth(50);
+        tblFood.getColumnModel().getColumn(2).setPreferredWidth(110);
+        tblFood.getColumnModel().getColumn(3).setPreferredWidth(80);
+        tblFood.getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) tableRowSelected();
         });
-        jTable1.setSelectionMode(javax.swing.ListSelectionModel.SINGLE_SELECTION);
-        jScrollPane1.setViewportView(jTable1);
-        jScrollPane1.setBorder(BorderFactory.createLineBorder(new Color(200, 210, 220)));
 
-        JPanel formPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 14, 0));
-        formPanel.setBackground(Color.WHITE);
-        formPanel.add(lblFoodName); formPanel.add(txtFoodName);
-        formPanel.add(Box.createHorizontalStrut(10));
-        formPanel.add(lblPrice);    formPanel.add(txtPrice);
-        formPanel.add(Box.createHorizontalStrut(10));
-        formPanel.add(chkAvailable);
+        // Search bar for table
+        AppTheme.styleField(txtSearch);
+        txtSearch.putClientProperty("JTextField.placeholderText", "Search food items...");
+        txtSearch.setPreferredSize(new Dimension(260, AppTheme.BTN_H));
+        txtSearch.getDocument().addDocumentListener(new DocumentListener() {
+            @Override public void insertUpdate(DocumentEvent e)  { filterTable(txtSearch.getText()); }
+            @Override public void removeUpdate(DocumentEvent e)  { filterTable(txtSearch.getText()); }
+            @Override public void changedUpdate(DocumentEvent e) { filterTable(txtSearch.getText()); }
+        });
 
-        JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
-        btnPanel.setBackground(Color.WHITE);
-        btnPanel.add(btnAdd); btnPanel.add(btnUpdate); btnPanel.add(btnDelete);
-        btnPanel.add(btnClear); btnPanel.add(btnBack);
+        JButton clearSearchBtn = AppTheme.ghostBtn("Clear");
+        clearSearchBtn.addActionListener(e -> {
+            txtSearch.setText("");
+            loadFoodTable();
+        });
 
-        JPanel topPanel = new JPanel();
-        topPanel.setBackground(Color.WHITE);
-        topPanel.setLayout(new BoxLayout(topPanel, BoxLayout.Y_AXIS));
-        topPanel.setBorder(BorderFactory.createEmptyBorder(18, 20, 12, 20));
-        lblTitle.setAlignmentX(Component.LEFT_ALIGNMENT);
-        formPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        btnPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        topPanel.add(lblTitle);
-        topPanel.add(Box.createVerticalStrut(16));
-        topPanel.add(formPanel);
-        topPanel.add(Box.createVerticalStrut(12));
-        topPanel.add(btnPanel);
+        JPanel searchBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        searchBar.setBackground(AppTheme.BG_MAIN);
+        JLabel searchLbl = new JLabel("Search:");
+        searchLbl.setFont(AppTheme.FONT_BODY);
+        searchLbl.setForeground(AppTheme.TEXT_PRIMARY);
+        searchBar.add(searchLbl);
+        searchBar.add(txtSearch);
+        searchBar.add(clearSearchBtn);
 
-        JPanel tablePanel = new JPanel(new BorderLayout());
-        tablePanel.setBackground(Color.WHITE);
-        tablePanel.setBorder(BorderFactory.createEmptyBorder(0, 20, 20, 20));
-        tablePanel.add(jScrollPane1, BorderLayout.CENTER);
+        JScrollPane tableScroll = new JScrollPane(tblFood);
+        tableScroll.setBorder(BorderFactory.createLineBorder(AppTheme.BORDER));
+        tableScroll.getViewport().setBackground(AppTheme.BG_CARD);
 
-        getContentPane().setBackground(Color.WHITE);
+        JPanel tablePanel = new JPanel(new BorderLayout(0, 8));
+        tablePanel.setBackground(AppTheme.BG_MAIN);
+        tablePanel.setBorder(BorderFactory.createEmptyBorder(8, 0, 8, 0));
+        tablePanel.add(searchBar, BorderLayout.NORTH);
+        tablePanel.add(tableScroll, BorderLayout.CENTER);
+
+        // ── Body: form left + table right ───────────────────────────
+        JPanel body = new JPanel(new BorderLayout(16, 0));
+        body.setBackground(AppTheme.BG_MAIN);
+        body.setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16));
+        body.add(formScroll,  BorderLayout.WEST);
+        body.add(tablePanel, BorderLayout.CENTER);
+
+        // ── Root layout ──────────────────────────────────────────────
+        getContentPane().setBackground(AppTheme.BG_MAIN);
         getContentPane().setLayout(new BorderLayout());
-        getContentPane().add(topPanel,   BorderLayout.NORTH);
-        getContentPane().add(tablePanel, BorderLayout.CENTER);
-
+        getContentPane().add(header, BorderLayout.NORTH);
+        getContentPane().add(body,   BorderLayout.CENTER);
     }// </editor-fold>//GEN-END:initComponents
 
+    // ── Data loading ─────────────────────────────────────────────────
+
+    private void loadFoodTable() {
+        try {
+            tableModel.setRowCount(0);
+            List<FoodItem> items = FoodService.getAllFoodItems();
+            for (FoodItem f : items) {
+                tableModel.addRow(new Object[]{
+                    f.getFoodId(), f.getFoodName(),
+                    String.format("%.2f", f.getPrice()),
+                    f.getStockQuantity(), f.getImagePath()
+                });
+            }
+        } catch (Exception e) {
+            AppTheme.showError(this, "Database Error",
+                    "Could not load food items: " + e.getMessage());
+        }
+    }
+
+    private void filterTable(String query) {
+        try {
+            tableModel.setRowCount(0);
+            List<FoodItem> items = FoodService.getAllFoodItems();
+            String q = (query == null) ? "" : query.toLowerCase().trim();
+            for (FoodItem f : items) {
+                if (q.isEmpty() || f.getFoodName().toLowerCase().contains(q)) {
+                    tableModel.addRow(new Object[]{
+                        f.getFoodId(), f.getFoodName(),
+                        String.format("%.2f", f.getPrice()),
+                        f.getStockQuantity(), f.getImagePath()
+                    });
+                }
+            }
+        } catch (Exception e) {
+            logger.warning("Filter failed: " + e.getMessage());
+        }
+    }
+
+    private void tableRowSelected() {
+        int row = tblFood.getSelectedRow();
+        if (row < 0) return;
+        txtName.setText(tableModel.getValueAt(row, 1).toString());
+        txtPrice.setText(tableModel.getValueAt(row, 2).toString());
+        txtStock.setText(tableModel.getValueAt(row, 3).toString());
+        Object imgPath = tableModel.getValueAt(row, 4);
+        persistedImagePath = (imgPath != null) ? imgPath.toString() : null;
+        selectedSourceFile  = null;   // no new image chosen yet
+        if (persistedImagePath != null && !persistedImagePath.isBlank()) {
+            lblImagePreview.setIcon(ImageManager.loadScaled(persistedImagePath, 180, 120));
+            lblImagePreview.setText(null);
+        } else {
+            lblImagePreview.setIcon(null);
+            lblImagePreview.setText("No Image");
+        }
+    }
+
+    // ── CRUD actions ─────────────────────────────────────────────────
+
     private void btnAddActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnAddActionPerformed
-        String foodName  = txtFoodName.getText().trim();
-        String priceText = txtPrice.getText().trim();
-        if (foodName.isEmpty() || priceText.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Please enter food name and price.",
-                    "Validation Error", JOptionPane.WARNING_MESSAGE);
+        String name  = txtName.getText().trim();
+        String price = txtPrice.getText().trim();
+        String stock = txtStock.getText().trim();
+        if (name.isEmpty() || price.isEmpty() || stock.isEmpty()) {
+            AppTheme.showWarning(this, "Validation Error",
+                    "Please fill in all fields before adding.");
             return;
         }
-        double price;
+        // Import image BEFORE DB insert so we can roll back the managed file on DB failure.
+        // Never store the raw source path — only the managed relative filename goes to MySQL.
+        String managedPath = null;
+        if (selectedSourceFile != null) {
+            try {
+                managedPath = ImageManager.importImage(selectedSourceFile.toPath());
+            } catch (java.io.IOException ex) {
+                AppTheme.showWarning(this, "Image Error",
+                        "Could not import image: " + ex.getMessage());
+                return;
+            }
+        }
         try {
-            price = Double.parseDouble(priceText);
-        } catch (NumberFormatException e) {
-            JOptionPane.showMessageDialog(this, "Price must be a valid number.",
-                    "Validation Error", JOptionPane.WARNING_MESSAGE);
-            txtPrice.requestFocus();
-            return;
-        }
-        if (price <= 0) {
-            JOptionPane.showMessageDialog(this, "Price must be greater than zero.",
-                    "Validation Error", JOptionPane.WARNING_MESSAGE);
-            return;
-        }
-        try {
-            FoodService.addFoodItem(foodName, price, chkAvailable.isSelected(), null);
-            JOptionPane.showMessageDialog(this, "Food item added successfully!");
+            double p = Double.parseDouble(price);
+            int    s = Integer.parseInt(stock);
+            if (p <= 0 || s < 0) throw new NumberFormatException();
+            FoodService.addFoodItem(name, p, s > 0, s, managedPath);
+            AppTheme.showInfo(this, "Success", "\"" + name + "\" added successfully.");
             loadFoodTable();
             clearForm();
-        } catch (Exception e) {
-            JOptionPane.showMessageDialog(this, "Error: " + e.getMessage(),
-                    "Database Error", JOptionPane.ERROR_MESSAGE);
+        } catch (NumberFormatException ex) {
+            if (managedPath != null) ImageManager.deleteManagedImage(managedPath);
+            AppTheme.showWarning(this, "Validation Error",
+                    "Price must be a positive number and Stock a non-negative integer.");
+        } catch (Exception ex) {
+            if (managedPath != null) ImageManager.deleteManagedImage(managedPath);
+            AppTheme.showError(this, "Database Error",
+                    "Could not add item: " + ex.getMessage());
         }
     }//GEN-LAST:event_btnAddActionPerformed
 
-    private void clearForm() {
-        selectedFoodId = -1;
-        txtFoodName.setText("");
-        txtPrice.setText("");
-        chkAvailable.setSelected(true);
-        jTable1.clearSelection();
-        btnAdd.setEnabled(true);
-        btnUpdate.setEnabled(false);
-        btnDelete.setEnabled(false);
-        txtFoodName.requestFocus();
-    }
+    private void btnUpdateActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnUpdateActionPerformed
+        int row = tblFood.getSelectedRow();
+        if (row < 0) {
+            AppTheme.showWarning(this, "No Selection",
+                    "Please select a food item from the table to update.");
+            return;
+        }
+        String name  = txtName.getText().trim();
+        String price = txtPrice.getText().trim();
+        String stock = txtStock.getText().trim();
+        if (name.isEmpty() || price.isEmpty() || stock.isEmpty()) {
+            AppTheme.showWarning(this, "Validation Error",
+                    "Please fill in all fields before updating.");
+            return;
+        }
+        // If no new image was chosen, retain the existing persisted path.
+        // Only import (and eventually replace) when the user actively selected a new file.
+        String newManagedPath = persistedImagePath;
+        if (selectedSourceFile != null) {
+            try {
+                newManagedPath = ImageManager.importImage(selectedSourceFile.toPath());
+            } catch (java.io.IOException ex) {
+                AppTheme.showWarning(this, "Image Error",
+                        "Could not import new image: " + ex.getMessage());
+                return;
+            }
+        }
+        try {
+            int    id = Integer.parseInt(tableModel.getValueAt(row, 0).toString());
+            double p  = Double.parseDouble(price);
+            int    s  = Integer.parseInt(stock);
+            if (p <= 0 || s < 0) throw new NumberFormatException();
+            FoodService.updateFoodItem(id, name, p, s > 0, s, newManagedPath);
+            // Delete old managed image only after DB update succeeds and
+            // only if a genuinely new image replaced it.
+            if (selectedSourceFile != null
+                    && persistedImagePath != null
+                    && !persistedImagePath.equals(newManagedPath)) {
+                ImageManager.deleteManagedImage(persistedImagePath);
+            }
+            AppTheme.showInfo(this, "Updated", "\"" + name + "\" updated successfully.");
+            loadFoodTable();
+            clearForm();
+        } catch (NumberFormatException ex) {
+            if (selectedSourceFile != null && newManagedPath != null
+                    && !newManagedPath.equals(persistedImagePath)) {
+                ImageManager.deleteManagedImage(newManagedPath);
+            }
+            AppTheme.showWarning(this, "Validation Error",
+                    "Price must be a positive number and Stock a non-negative integer.");
+        } catch (Exception ex) {
+            if (selectedSourceFile != null && newManagedPath != null
+                    && !newManagedPath.equals(persistedImagePath)) {
+                ImageManager.deleteManagedImage(newManagedPath);
+            }
+            AppTheme.showError(this, "Database Error",
+                    "Could not update item: " + ex.getMessage());
+        }
+    }//GEN-LAST:event_btnUpdateActionPerformed
+
+    private void btnDeleteActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnDeleteActionPerformed
+        int row = tblFood.getSelectedRow();
+        if (row < 0) {
+            AppTheme.showWarning(this, "No Selection",
+                    "Please select a food item from the table to delete.");
+            return;
+        }
+        String name = tableModel.getValueAt(row, 1).toString();
+        if (!AppTheme.showConfirm(this, "Confirm Delete",
+                "Delete \"" + name + "\"? This cannot be undone.")) {
+            return;
+        }
+        try {
+            int id = Integer.parseInt(tableModel.getValueAt(row, 0).toString());
+            FoodService.deleteFoodItem(id);
+            AppTheme.showInfo(this, "Deleted", "\"" + name + "\" deleted.");
+            loadFoodTable();
+            clearForm();
+        } catch (Exception ex) {
+            AppTheme.showError(this, "Database Error",
+                    "Could not delete item: " + ex.getMessage());
+        }
+    }//GEN-LAST:event_btnDeleteActionPerformed
 
     private void btnClearActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnClearActionPerformed
         clearForm();
     }//GEN-LAST:event_btnClearActionPerformed
 
-    private void btnUpdateActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnUpdateActionPerformed
-        if (selectedFoodId == -1) {
-            JOptionPane.showMessageDialog(this, "Please select a food item.");
-            return;
+    private void btnPickImageActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnPickImageActionPerformed
+        JFileChooser chooser = new JFileChooser();
+        chooser.setDialogTitle("Select Food Image");
+        chooser.setFileFilter(new FileNameExtensionFilter(
+                "Image files (*.jpg, *.jpeg, *.png)", "jpg", "jpeg", "png"));
+        if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+            selectedSourceFile = chooser.getSelectedFile();
+            // Preview from source directly — NOT persisted yet, NOT through managed directory
+            lblImagePreview.setIcon(
+                ImageManager.loadScaledPreview(selectedSourceFile, 180, 120));
+            lblImagePreview.setText(null);
         }
-        String foodName  = txtFoodName.getText().trim();
-        String priceText = txtPrice.getText().trim();
-        if (foodName.isEmpty() || priceText.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Please enter food name and price.");
-            return;
-        }
-        double price;
-        try {
-            price = Double.parseDouble(priceText);
-        } catch (NumberFormatException e) {
-            JOptionPane.showMessageDialog(this, "Price must be a valid number.");
-            return;
-        }
-        if (price <= 0) {
-            JOptionPane.showMessageDialog(this, "Price must be greater than zero.");
-            return;
-        }
-        try {
-            FoodService.updateFoodItem(selectedFoodId, foodName, price, chkAvailable.isSelected(), null);
-            JOptionPane.showMessageDialog(this, "Food item updated successfully!");
-            loadFoodTable();
-            clearForm();
-        } catch (Exception e) {
-            JOptionPane.showMessageDialog(this, "Error: " + e.getMessage(),
-                    "Database Error", JOptionPane.ERROR_MESSAGE);
-        }
-    }//GEN-LAST:event_btnUpdateActionPerformed
-
-    private void btnDeleteActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnDeleteActionPerformed
-        if (selectedFoodId == -1) {
-            JOptionPane.showMessageDialog(this, "Please select a food item.");
-            return;
-        }
-        int response = JOptionPane.showConfirmDialog(this,
-                "Are you sure you want to delete this food item?",
-                "Confirm Delete", JOptionPane.YES_NO_OPTION);
-        if (response == JOptionPane.YES_OPTION) {
-            try {
-                FoodService.deleteFoodItem(selectedFoodId);
-                JOptionPane.showMessageDialog(this, "Food item deleted successfully!");
-                loadFoodTable();
-                clearForm();
-            } catch (Exception e) {
-                JOptionPane.showMessageDialog(this,
-                        "Cannot delete: this item is referenced by existing orders.\n" + e.getMessage(),
-                        "Delete Failed", JOptionPane.ERROR_MESSAGE);
-            }
-        }
-    }//GEN-LAST:event_btnDeleteActionPerformed
+    }//GEN-LAST:event_btnPickImageActionPerformed
 
     private void btnBackActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnBackActionPerformed
         new AdminDashboardFrame().setVisible(true);
         dispose();
     }//GEN-LAST:event_btnBackActionPerformed
 
-    public static void main(String args[]) {
+    private void clearForm() {
+        txtName.setText("");
+        txtPrice.setText("");
+        txtStock.setText("");
+        selectedSourceFile  = null;   // discard temp source — no managed file touched
+        persistedImagePath  = null;
+        lblImagePreview.setIcon(null);
+        lblImagePreview.setText("No Image");
+        tblFood.clearSelection();
+    }
+
+    public static void main(String[] args) {
         java.awt.EventQueue.invokeLater(() -> new FoodManagementFrame().setVisible(true));
     }
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
-    private javax.swing.JButton   btnAdd;
-    private javax.swing.JButton   btnBack;
-    private javax.swing.JButton   btnClear;
-    private javax.swing.JButton   btnDelete;
-    private javax.swing.JButton   btnUpdate;
-    private javax.swing.JCheckBox chkAvailable;
-    private javax.swing.JScrollPane jScrollPane1;
-    private javax.swing.JTable    jTable1;
-    private javax.swing.JLabel    lblFoodName;
-    private javax.swing.JLabel    lblPrice;
-    private javax.swing.JLabel    lblTitle;
-    private javax.swing.JTextField txtFoodName;
+    private javax.swing.JButton    btnAdd;
+    private javax.swing.JButton    btnUpdate;
+    private javax.swing.JButton    btnDelete;
+    private javax.swing.JButton    btnClear;
+    private javax.swing.JButton    btnPickImage;
+    private javax.swing.JTextField txtName;
     private javax.swing.JTextField txtPrice;
+    private javax.swing.JTextField txtStock;
+    private javax.swing.JTextField txtSearch;
+    private javax.swing.JTable     tblFood;
+    private javax.swing.JLabel     lblName;
+    private javax.swing.JLabel     lblPrice;
+    private javax.swing.JLabel     lblStock;
+    private javax.swing.JLabel     lblImagePreview;
     // End of variables declaration//GEN-END:variables
 }

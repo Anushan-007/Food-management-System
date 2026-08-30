@@ -18,12 +18,15 @@ public class FoodItemDAOImpl implements FoodItemDAO {
 
     private static final Logger logger = Logger.getLogger(FoodItemDAOImpl.class.getName());
 
+    private static final String SELECT_COLS =
+        "food_id, food_name, price, available, stock_quantity, image_path";
+
     @Override
     public List<FoodItem> findAll() {
         List<FoodItem> list = new ArrayList<>();
-        String sql = "SELECT food_id, food_name, price, available, image_path " +
-                     "FROM food_items ORDER BY food_id";
-        try (PreparedStatement ps = DatabaseConnection.get().prepareStatement(sql);
+        String sql = "SELECT " + SELECT_COLS + " FROM food_items ORDER BY food_id";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
             while (rs.next()) list.add(map(rs));
         } catch (SQLException e) {
@@ -35,9 +38,10 @@ public class FoodItemDAOImpl implements FoodItemDAO {
     @Override
     public List<FoodItem> findAvailable() {
         List<FoodItem> list = new ArrayList<>();
-        String sql = "SELECT food_id, food_name, price, available, image_path " +
-                     "FROM food_items WHERE available = 1 ORDER BY food_id";
-        try (PreparedStatement ps = DatabaseConnection.get().prepareStatement(sql);
+        String sql = "SELECT " + SELECT_COLS +
+                     " FROM food_items WHERE available = 1 ORDER BY food_id";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
             while (rs.next()) list.add(map(rs));
         } catch (SQLException e) {
@@ -48,9 +52,9 @@ public class FoodItemDAOImpl implements FoodItemDAO {
 
     @Override
     public Optional<FoodItem> findById(int foodId) {
-        String sql = "SELECT food_id, food_name, price, available, image_path " +
-                     "FROM food_items WHERE food_id = ?";
-        try (PreparedStatement ps = DatabaseConnection.get().prepareStatement(sql)) {
+        String sql = "SELECT " + SELECT_COLS + " FROM food_items WHERE food_id = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, foodId);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) return Optional.of(map(rs));
@@ -63,14 +67,16 @@ public class FoodItemDAOImpl implements FoodItemDAO {
 
     @Override
     public int insert(FoodItem item) {
-        String sql = "INSERT INTO food_items (food_name, price, available, image_path) " +
-                     "VALUES (?, ?, ?, ?)";
-        try (PreparedStatement ps = DatabaseConnection.get().prepareStatement(
-                sql, Statement.RETURN_GENERATED_KEYS)) {
-            ps.setString(1, item.getFoodName());
-            ps.setDouble(2, item.getPrice());
+        String sql = "INSERT INTO food_items " +
+                     "(food_name, price, available, stock_quantity, image_path) " +
+                     "VALUES (?, ?, ?, ?, ?)";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            ps.setString(1,  item.getFoodName());
+            ps.setDouble(2,  item.getPrice());
             ps.setBoolean(3, item.isAvailable());
-            ps.setString(4, item.getImagePath());
+            ps.setInt(4,     item.getStockQuantity());
+            ps.setString(5,  item.getImagePath());
             ps.executeUpdate();
             try (ResultSet keys = ps.getGeneratedKeys()) {
                 if (keys.next()) return keys.getInt(1);
@@ -84,14 +90,17 @@ public class FoodItemDAOImpl implements FoodItemDAO {
 
     @Override
     public boolean update(FoodItem item) {
-        String sql = "UPDATE food_items SET food_name=?, price=?, available=?, image_path=? " +
+        String sql = "UPDATE food_items " +
+                     "SET food_name=?, price=?, available=?, stock_quantity=?, image_path=? " +
                      "WHERE food_id=?";
-        try (PreparedStatement ps = DatabaseConnection.get().prepareStatement(sql)) {
-            ps.setString(1, item.getFoodName());
-            ps.setDouble(2, item.getPrice());
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1,  item.getFoodName());
+            ps.setDouble(2,  item.getPrice());
             ps.setBoolean(3, item.isAvailable());
-            ps.setString(4, item.getImagePath());
-            ps.setInt(5, item.getFoodId());
+            ps.setInt(4,     item.getStockQuantity());
+            ps.setString(5,  item.getImagePath());
+            ps.setInt(6,     item.getFoodId());
             return ps.executeUpdate() > 0;
         } catch (SQLException e) {
             logger.log(Level.SEVERE, "FoodItemDAO.update failed.", e);
@@ -102,7 +111,8 @@ public class FoodItemDAOImpl implements FoodItemDAO {
     @Override
     public boolean delete(int foodId) {
         String sql = "DELETE FROM food_items WHERE food_id = ?";
-        try (PreparedStatement ps = DatabaseConnection.get().prepareStatement(sql)) {
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, foodId);
             return ps.executeUpdate() > 0;
         } catch (SQLException e) {
@@ -111,7 +121,30 @@ public class FoodItemDAOImpl implements FoodItemDAO {
         }
     }
 
-    // ── Helper ───────────────────────────────────────────────────────────────
+    @Override
+    public int countAll() {
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement("SELECT COUNT(*) FROM food_items");
+             ResultSet rs = ps.executeQuery()) {
+            if (rs.next()) return rs.getInt(1);
+        } catch (SQLException e) {
+            logger.log(Level.SEVERE, "FoodItemDAO.countAll failed.", e);
+        }
+        return 0;
+    }
+
+    @Override
+    public int countAvailable() {
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT COUNT(*) FROM food_items WHERE available = 1");
+             ResultSet rs = ps.executeQuery()) {
+            if (rs.next()) return rs.getInt(1);
+        } catch (SQLException e) {
+            logger.log(Level.SEVERE, "FoodItemDAO.countAvailable failed.", e);
+        }
+        return 0;
+    }
 
     private static FoodItem map(ResultSet rs) throws SQLException {
         FoodItem item = new FoodItem();
@@ -119,6 +152,7 @@ public class FoodItemDAOImpl implements FoodItemDAO {
         item.setFoodName(rs.getString("food_name"));
         item.setPrice(rs.getDouble("price"));
         item.setAvailable(rs.getBoolean("available"));
+        item.setStockQuantity(rs.getInt("stock_quantity"));
         item.setImagePath(rs.getString("image_path"));
         return item;
     }

@@ -6,74 +6,45 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.Properties;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Provides a single JDBC connection for the application lifetime.
- * Call DatabaseConnection.get() to obtain the connection.
- * The connection is opened lazily on first use and reused thereafter.
+ * Provides a new JDBC connection on each call to {@link #getConnection()}.
+ * Callers must close the connection — use try-with-resources.
  */
 public class DatabaseConnection {
 
     private static final Logger logger = Logger.getLogger(DatabaseConnection.class.getName());
-    private static Connection connection;
+    private static final String URL;
+    private static final String USER;
+    private static final String PASSWORD;
 
-    private DatabaseConnection() {}
-
-    /**
-     * Returns the shared connection, opening it if not yet open.
-     */
-    public static Connection get() {
-        try {
-            if (connection == null || connection.isClosed()) {
-                connection = openConnection();
-            }
-        } catch (SQLException e) {
-            logger.log(Level.SEVERE, "Failed to validate existing connection; reopening.", e);
-            connection = openConnection();
-        }
-        return connection;
-    }
-
-    private static Connection openConnection() {
+    static {
         Properties props = new Properties();
         try (InputStream in = DatabaseConnection.class
                 .getClassLoader().getResourceAsStream("db.properties")) {
             if (in == null) {
                 throw new RuntimeException(
-                    "db.properties not found on classpath. " +
-                    "Place it in src/main/resources/.");
+                        "db.properties not found on classpath. " +
+                        "Copy db.properties.example to db.properties and fill in credentials.");
             }
             props.load(in);
         } catch (IOException e) {
             throw new RuntimeException("Could not load db.properties.", e);
         }
-
-        String url      = props.getProperty("db.url");
-        String user     = props.getProperty("db.username");
-        String password = props.getProperty("db.password");
-
-        try {
-            Connection conn = DriverManager.getConnection(url, user, password);
-            logger.info("Database connection established.");
-            return conn;
-        } catch (SQLException e) {
-            throw new RuntimeException(
-                "Cannot connect to the database. " +
-                "Check db.properties and ensure MySQL is running.\n" + e.getMessage(), e);
-        }
+        URL      = props.getProperty("db.url");
+        USER     = props.getProperty("db.username");
+        PASSWORD = props.getProperty("db.password");
+        logger.info("Database credentials loaded.");
     }
 
-    /** Closes the shared connection (call on application shutdown). */
-    public static void close() {
-        if (connection != null) {
-            try {
-                connection.close();
-                logger.info("Database connection closed.");
-            } catch (SQLException e) {
-                logger.log(Level.WARNING, "Error closing connection.", e);
-            }
-        }
+    private DatabaseConnection() {}
+
+    /**
+     * Opens and returns a new JDBC connection.
+     * The caller is responsible for closing it — use try-with-resources.
+     */
+    public static Connection getConnection() throws SQLException {
+        return DriverManager.getConnection(URL, USER, PASSWORD);
     }
 }
