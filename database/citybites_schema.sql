@@ -56,7 +56,8 @@ CREATE TABLE IF NOT EXISTS orders (
     total_amount  DECIMAL(10,2)  NOT NULL,
     status        ENUM('Pending','Preparing','Ready','Completed','Cancelled')
                   NOT NULL DEFAULT 'Pending',
-    FOREIGN KEY (customer_id) REFERENCES customers(customer_id) ON DELETE CASCADE
+    CONSTRAINT fk_orders_customer FOREIGN KEY (customer_id)
+        REFERENCES customers(customer_id) ON DELETE RESTRICT
 );
 
 -- ── Order Items ──────────────────────────────────────────────

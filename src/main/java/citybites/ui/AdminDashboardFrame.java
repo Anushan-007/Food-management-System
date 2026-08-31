@@ -101,25 +101,38 @@ public class AdminDashboardFrame extends javax.swing.JFrame {
             this::btnViewOrdersActionPerformed
         );
 
-        JPanel actionsRow = new JPanel(new GridLayout(1, 3, 14, 0));
-        actionsRow.setBackground(AppTheme.BG_MAIN);
-        actionsRow.setBorder(BorderFactory.createEmptyBorder(
+        JPanel manageCustomersCard = buildActionCard(
+            "Manage Customers",
+            "Add, edit or remove customer accounts",
+            new Color(140, 100, 200),
+            this::btnManageCustomersActionPerformed
+        );
+
+        JPanel actionsGrid = new JPanel(new GridLayout(2, 2, 16, 16));
+        actionsGrid.setBackground(AppTheme.BG_MAIN);
+        actionsGrid.setBorder(BorderFactory.createEmptyBorder(
                 0, AppTheme.PAD_LG, AppTheme.PAD_LG, AppTheme.PAD_LG));
-        actionsRow.add(manageFoodCard);
-        actionsRow.add(manageCatCard);
-        actionsRow.add(viewOrdersCard);
+        actionsGrid.add(manageFoodCard);
+        actionsGrid.add(manageCatCard);
+        actionsGrid.add(viewOrdersCard);
+        actionsGrid.add(manageCustomersCard);
 
         // ── Section header bar ───────────────────────────────────────
         JPanel sectionBar = new JPanel(new FlowLayout(FlowLayout.LEFT, AppTheme.PAD_LG, 8));
         sectionBar.setBackground(AppTheme.BG_MAIN);
         sectionBar.add(sectionTitle);
 
-        // ── Content area ─────────────────────────────────────────────
+        // ── Content area: stack summary → heading → 2×2 grid at top ─
+        JPanel northStack = new JPanel();
+        northStack.setBackground(AppTheme.BG_MAIN);
+        northStack.setLayout(new BoxLayout(northStack, BoxLayout.Y_AXIS));
+        northStack.add(cardPanel);
+        northStack.add(sectionBar);
+        northStack.add(actionsGrid);
+
         JPanel content = new JPanel(new BorderLayout());
         content.setBackground(AppTheme.BG_MAIN);
-        content.add(cardPanel,  BorderLayout.NORTH);
-        content.add(sectionBar, BorderLayout.CENTER);
-        content.add(actionsRow, BorderLayout.SOUTH);
+        content.add(northStack, BorderLayout.NORTH);
 
         getContentPane().setBackground(AppTheme.BG_MAIN);
         getContentPane().setLayout(new BorderLayout());
@@ -144,7 +157,7 @@ public class AdminDashboardFrame extends javax.swing.JFrame {
         titleLbl.setForeground(AppTheme.TEXT_PRIMARY);
 
         JLabel descLbl = new JLabel(
-            "<html><body style='width:200px'>" + description + "</body></html>");
+            "<html><body style='width:250px'>" + description + "</body></html>");
         descLbl.setFont(AppTheme.FONT_BODY);
         descLbl.setForeground(AppTheme.TEXT_MUTED);
 
@@ -202,6 +215,11 @@ public class AdminDashboardFrame extends javax.swing.JFrame {
         new AdminOrdersFrame().setVisible(true);
         dispose();
     }//GEN-LAST:event_btnViewOrdersActionPerformed
+
+    private void btnManageCustomersActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnManageCustomersActionPerformed
+        new CustomerManagementFrame().setVisible(true);
+        dispose();
+    }//GEN-LAST:event_btnManageCustomersActionPerformed
 
     private void btnLogoutActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnLogoutActionPerformed
         if (AppTheme.showConfirm(this, "Confirm Logout",

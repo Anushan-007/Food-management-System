@@ -41,6 +41,10 @@ public class DatabaseInitializer {
     private static final String MIG_ADD_CATEGORY_DESCRIPTION =
             "20260831_add_food_category_description";
 
+    /** Migration key for changing orders.customer_id FK from CASCADE to RESTRICT. */
+    private static final String MIG_ORDERS_CUSTOMER_FK_RESTRICT =
+            "20260831_orders_customer_fk_restrict";
+
     private DatabaseInitializer() {}
 
     public static void initialize() {
@@ -115,8 +119,8 @@ public class DatabaseInitializer {
                     total_amount DECIMAL(10,2)  NOT NULL,
                     status       ENUM('Pending','Preparing','Ready','Completed','Cancelled')
                                  NOT NULL DEFAULT 'Pending',
-                    FOREIGN KEY (customer_id) REFERENCES customers(customer_id)
-                        ON DELETE CASCADE
+                    CONSTRAINT fk_orders_customer FOREIGN KEY (customer_id)
+                        REFERENCES customers(customer_id) ON DELETE RESTRICT
                 )
                 """);
 
@@ -155,6 +159,7 @@ public class DatabaseInitializer {
         migrationAddCategoryIdColumn(conn);
         migrationEnforceCategoryRequired(conn);
         migrationAddCategoryDescription(conn);
+        migrationOrdersCustomerFkRestrict(conn);
     }
 
     /** Migration 1: Add stock_quantity column if missing (pre-v1 databases). */
@@ -594,6 +599,88 @@ public class DatabaseInitializer {
         try (PreparedStatement ins = conn.prepareStatement(
                 "INSERT INTO schema_migrations (migration_key) VALUES (?)")) {
             ins.setString(1, MIG_ADD_CATEGORY_DESCRIPTION);
+            ins.executeUpdate();
+        }
+    }
+
+    /**
+     * Migration 8 (ONE-TIME): Changes the {@code orders.customer_id} foreign key
+     * from {@code ON DELETE CASCADE} to {@code ON DELETE RESTRICT}.
+     *
+     * <p>Rationale: CASCADE silently deletes all order history when a customer is
+     * removed, making accidental data loss impossible to recover. RESTRICT forces
+     * the admin UI to explicitly acknowledge orders before deletion can proceed.
+     *
+     * <p>Steps:
+     * <ol>
+     *   <li>Look up the current DELETE_RULE for the FK in
+     *       {@code information_schema.REFERENTIAL_CONSTRAINTS}.
+     *   <li>If it is already {@code RESTRICT} or {@code NO ACTION}, record the key
+     *       and return — no DDL needed.</li>
+     *   <li>Otherwise discover the FK constraint name, DROP it, and re-ADD it with
+     *       {@code ON DELETE RESTRICT}.</li>
+     *   <li>Record the migration key (idempotent guard on future startups).</li>
+     * </ol>
+     */
+    private static void migrationOrdersCustomerFkRestrict(Connection conn) throws SQLException {
+        // Guard: already applied?
+        try (PreparedStatement check = conn.prepareStatement(
+                "SELECT COUNT(*) FROM schema_migrations WHERE migration_key = ?")) {
+            check.setString(1, MIG_ORDERS_CUSTOMER_FK_RESTRICT);
+            ResultSet rs = check.executeQuery();
+            rs.next();
+            if (rs.getInt(1) > 0) return;
+        }
+
+        // Check current DELETE_RULE for orders → customers FK
+        String deleteRule = null;
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT DELETE_RULE " +
+                "FROM information_schema.REFERENTIAL_CONSTRAINTS " +
+                "WHERE CONSTRAINT_SCHEMA = DATABASE() " +
+                "AND TABLE_NAME = 'orders' " +
+                "AND REFERENCED_TABLE_NAME = 'customers'");
+             ResultSet rs = ps.executeQuery()) {
+            if (rs.next()) deleteRule = rs.getString(1);
+        }
+
+        if (deleteRule == null) {
+            logger.warning("Migration '" + MIG_ORDERS_CUSTOMER_FK_RESTRICT +
+                "': no FK found on orders.customer_id — skipping DDL.");
+        } else if ("RESTRICT".equals(deleteRule) || "NO ACTION".equals(deleteRule)) {
+            logger.info("Migration '" + MIG_ORDERS_CUSTOMER_FK_RESTRICT +
+                "': orders.customer_id FK is already RESTRICT — DDL skipped.");
+        } else {
+            // Discover the constraint name
+            String fkName = null;
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT CONSTRAINT_NAME " +
+                    "FROM information_schema.KEY_COLUMN_USAGE " +
+                    "WHERE TABLE_SCHEMA = DATABASE() " +
+                    "AND TABLE_NAME = 'orders' " +
+                    "AND COLUMN_NAME = 'customer_id' " +
+                    "AND REFERENCED_TABLE_NAME = 'customers'");
+                 ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) fkName = rs.getString(1);
+            }
+            if (fkName != null) {
+                conn.createStatement().execute(
+                    "ALTER TABLE orders DROP FOREIGN KEY " + fkName);
+                logger.info("Migration: dropped FK '" + fkName +
+                    "' (ON DELETE " + deleteRule + ") from orders.customer_id.");
+            }
+            conn.createStatement().execute(
+                "ALTER TABLE orders ADD CONSTRAINT fk_orders_customer " +
+                "FOREIGN KEY (customer_id) REFERENCES customers(customer_id) " +
+                "ON DELETE RESTRICT");
+            logger.info("Migration '" + MIG_ORDERS_CUSTOMER_FK_RESTRICT +
+                "': orders.customer_id FK changed to ON DELETE RESTRICT.");
+        }
+
+        // Record migration key
+        try (PreparedStatement ins = conn.prepareStatement(
+                "INSERT INTO schema_migrations (migration_key) VALUES (?)")) {
+            ins.setString(1, MIG_ORDERS_CUSTOMER_FK_RESTRICT);
             ins.executeUpdate();
         }
     }

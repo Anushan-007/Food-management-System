@@ -9,18 +9,30 @@ package citybites.model;
  * @author User
  */
 public class Customer {
-    
+
     private int customerId;
     private String fullName;
     private String username;
     private String password;
+    private String createdAt;
 
+    /** Used by AuthService / CustomerDAOImpl.findByUsername — createdAt not needed there. */
     public Customer(int customerId, String fullName,
                     String username, String password) {
         this.customerId = customerId;
         this.fullName = fullName;
         this.username = username;
         this.password = password;
+    }
+
+    /** Used by CustomerManagementService / getAll — includes registration timestamp. */
+    public Customer(int customerId, String fullName,
+                    String username, String password, String createdAt) {
+        this.customerId = customerId;
+        this.fullName = fullName;
+        this.username = username;
+        this.password = password;
+        this.createdAt = createdAt;
     }
 
     public int getCustomerId() {
@@ -37,5 +49,9 @@ public class Customer {
 
     public String getPassword() {
         return password;
+    }
+
+    public String getCreatedAt() {
+        return createdAt;
     }
 }
