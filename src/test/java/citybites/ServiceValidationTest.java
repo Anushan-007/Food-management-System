@@ -1444,15 +1444,20 @@ class ServiceValidationTest {
     }
 
     @Test @org.junit.jupiter.api.Order(208)
-    void updateCustomerProfileWithoutPasswordChange() {
+    void updateCustomerUsernameWithoutPasswordChange() {
         assertTrue(svCustomerId > 0, "Requires customer from @Order(201)");
+        // Admin update scope: username only; fullName arg is accepted but not persisted
         boolean updated = CustomerManagementService.updateCustomer(
             svCustomerId, "SV Updated Name", "sv_custmgmt", null, null);
-        assertTrue(updated, "updateCustomer (profile only) should return true");
+        assertTrue(updated, "updateCustomer (username only) should return true");
         citybites.model.Customer c =
             CustomerManagementService.getCustomerById(svCustomerId);
-        assertEquals("SV Updated Name", c.getFullName(),
-            "Full name should be updated in the database");
+        // Full name must NOT have changed — customers own their name
+        assertEquals("SV CustMgmt User", c.getFullName(),
+            "Admin update must not change full name — customers manage it themselves");
+        // Username must still be sv_custmgmt (unchanged in this call)
+        assertEquals("sv_custmgmt", c.getUsername(),
+            "Username must remain sv_custmgmt after update");
     }
 
     @Test @org.junit.jupiter.api.Order(209)
@@ -1604,5 +1609,925 @@ class ServiceValidationTest {
             // Explicit cleanup; also caught by deleteTestFixtures() sv_% pattern in @AfterAll
             try { CustomerManagementService.deleteCustomer(id); } catch (Exception ignored) {}
         }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    //  Customer Profile — @Order(219-227)
+    // ══════════════════════════════════════════════════════════════════════════
+
+    /** Helper: creates an SV_ customer and returns its ID; throws if creation fails. */
+    private static int createProfileFixture(String suffix) {
+        int id = CustomerManagementService.addCustomer(
+            "SV Profile " + suffix, "sv_profile_" + suffix, "Profile1!", "Profile1!");
+        assertTrue(id > 0, "SV_ profile fixture '" + suffix + "' must be created");
+        return id;
+    }
+
+    @Test @org.junit.jupiter.api.Order(219)
+    void profileService_getProfile_returnsCustomerWithNullableFieldsAllNull() {
+        // Fresh customer: profile columns are null until updateProfile is called
+        int id = createProfileFixture("get");
+        try {
+            citybites.model.Customer profile =
+                citybites.service.CustomerProfileService.getProfile(id);
+            assertNotNull(profile, "getProfile must return a non-null Customer");
+            assertEquals(id, profile.getCustomerId(), "Customer ID must match");
+            assertNull(profile.getEmail(),            "email must be null on a fresh account");
+            assertNull(profile.getPhoneNumber(),      "phone_number must be null on a fresh account");
+            assertNull(profile.getDateOfBirth(),      "date_of_birth must be null on a fresh account");
+            assertNull(profile.getProfileImagePath(), "profile_image_path must be null on a fresh account");
+            assertNull(profile.getDeliveryAddress(),  "delivery_address must be null on a fresh account");
+        } finally {
+            try { CustomerManagementService.deleteCustomer(id); } catch (Exception ignored) {}
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(220)
+    void profileService_updateProfile_persistsAllFields() {
+        int id = createProfileFixture("upd");
+        try {
+            java.time.LocalDate dob = java.time.LocalDate.of(1995, 6, 15);
+            String error = citybites.service.CustomerProfileService.updateProfile(
+                id, "SV Profile Updated", "sv@example.com",
+                "+94771234567", dob, null, "123 Test Street, Colombo");
+            assertNull(error, "updateProfile with valid data must return null (success)");
+
+            citybites.model.Customer profile =
+                citybites.service.CustomerProfileService.getProfile(id);
+            assertNotNull(profile);
+            assertEquals("SV Profile Updated",  profile.getFullName());
+            assertEquals("sv@example.com",      profile.getEmail());
+            assertEquals("+94771234567",         profile.getPhoneNumber());
+            assertEquals(dob,                   profile.getDateOfBirth());
+            assertEquals("123 Test Street, Colombo", profile.getDeliveryAddress());
+        } finally {
+            try { CustomerManagementService.deleteCustomer(id); } catch (Exception ignored) {}
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(221)
+    void profileService_updateProfile_rejectsBlankFullName() {
+        int id = createProfileFixture("blkname");
+        try {
+            String error = citybites.service.CustomerProfileService.updateProfile(
+                id, "   ", null, null, null, null, null);
+            assertNotNull(error, "blank full name must be rejected");
+            assertTrue(error.toLowerCase().contains("full name"),
+                "error message must mention 'full name'");
+        } finally {
+            try { CustomerManagementService.deleteCustomer(id); } catch (Exception ignored) {}
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(222)
+    void profileService_updateProfile_rejectsInvalidEmail() {
+        int id = createProfileFixture("bademail");
+        try {
+            String error = citybites.service.CustomerProfileService.updateProfile(
+                id, "SV Profile BadEmail", "not-an-email", null, null, null, null);
+            assertNotNull(error, "invalid email must be rejected");
+            assertTrue(error.toLowerCase().contains("email"),
+                "error message must mention 'email'");
+        } finally {
+            try { CustomerManagementService.deleteCustomer(id); } catch (Exception ignored) {}
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(223)
+    void profileService_updateProfile_rejectsInvalidPhone() {
+        int id = createProfileFixture("badphone");
+        try {
+            // Contains letters — not allowed
+            String error = citybites.service.CustomerProfileService.updateProfile(
+                id, "SV Profile BadPhone", null, "ABCDEF", null, null, null);
+            assertNotNull(error, "phone with letters must be rejected");
+            assertTrue(error.toLowerCase().contains("phone"),
+                "error message must mention 'phone'");
+        } finally {
+            try { CustomerManagementService.deleteCustomer(id); } catch (Exception ignored) {}
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(224)
+    void profileService_updateProfile_rejectsFutureDateOfBirth() {
+        int id = createProfileFixture("futuredob");
+        try {
+            java.time.LocalDate future = java.time.LocalDate.now().plusDays(1);
+            String error = citybites.service.CustomerProfileService.updateProfile(
+                id, "SV Profile FutureDOB", null, null, future, null, null);
+            assertNotNull(error, "future date of birth must be rejected");
+            assertTrue(error.toLowerCase().contains("future") ||
+                       error.toLowerCase().contains("birth"),
+                "error message must mention 'future' or 'birth'");
+        } finally {
+            try { CustomerManagementService.deleteCustomer(id); } catch (Exception ignored) {}
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(225)
+    void profileService_updateProfile_rejectsUnrealisticallyOldDOB() {
+        int id = createProfileFixture("olddob");
+        try {
+            java.time.LocalDate tooOld = java.time.LocalDate.now().minusYears(121);
+            String error = citybites.service.CustomerProfileService.updateProfile(
+                id, "SV Profile OldDOB", null, null, tooOld, null, null);
+            assertNotNull(error, "DOB over 120 years ago must be rejected");
+        } finally {
+            try { CustomerManagementService.deleteCustomer(id); } catch (Exception ignored) {}
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(226)
+    void profileService_calculateAge_returnsCorrectWholeYears() {
+        java.time.LocalDate dob = java.time.LocalDate.now().minusYears(30).minusMonths(6);
+        int age = citybites.service.CustomerProfileService.calculateAge(dob);
+        assertEquals(30, age, "age must be 30 whole years for a DOB 30.5 years ago");
+    }
+
+    @Test @org.junit.jupiter.api.Order(227)
+    void profileService_calculateAge_returnsMinusOneForNullDOB() {
+        int age = citybites.service.CustomerProfileService.calculateAge(null);
+        assertEquals(-1, age, "calculateAge(null) must return -1");
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // §228-239  Email uniqueness, admin compatibility, image lifecycle
+    // ══════════════════════════════════════════════════════════════════════════
+
+    @Test @org.junit.jupiter.api.Order(228)
+    void profileService_updateProfile_rejectsDuplicateEmailCaseInsensitively() {
+        // Register two customers; give the first one an email; try to assign the
+        // same email (different case) to the second — must be rejected.
+        int id1 = createProfileFixture("email1");
+        int id2 = createProfileFixture("email2");
+        try {
+            String err1 = citybites.service.CustomerProfileService.updateProfile(
+                id1, "SV Email Owner", "unique228@example.com", null, null, null, null);
+            assertNull(err1, "first assignment must succeed");
+
+            String err2 = citybites.service.CustomerProfileService.updateProfile(
+                id2, "SV Email Dup", "UNIQUE228@EXAMPLE.COM", null, null, null, null);
+            assertNotNull(err2, "duplicate email (different case) must be rejected");
+            assertTrue(err2.toLowerCase().contains("email"),
+                "rejection message must mention 'email'");
+        } finally {
+            try { CustomerManagementService.deleteCustomer(id1); } catch (Exception ignored) {}
+            try { CustomerManagementService.deleteCustomer(id2); } catch (Exception ignored) {}
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(229)
+    void profileService_updateProfile_allowsCustomerToKeepOwnEmail() {
+        // Updating profile with the customer's own existing email must succeed.
+        int id = createProfileFixture("ownmail");
+        try {
+            String err1 = citybites.service.CustomerProfileService.updateProfile(
+                id, "SV Own Email", "own229@example.com", null, null, null, null);
+            assertNull(err1, "initial email assignment must succeed");
+
+            // Re-submit with the same email — must not fail the uniqueness check.
+            String err2 = citybites.service.CustomerProfileService.updateProfile(
+                id, "SV Own Email Updated", "own229@example.com", null, null, null, null);
+            assertNull(err2, "re-using own email must be allowed");
+        } finally {
+            try { CustomerManagementService.deleteCustomer(id); } catch (Exception ignored) {}
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(230)
+    void profileService_updateProfile_storesBlankEmailAsNull() {
+        int id = createProfileFixture("blankemail");
+        try {
+            // First set a real email
+            citybites.service.CustomerProfileService.updateProfile(
+                id, "SV Blank Email", "blanktest@example.com", null, null, null, null);
+            // Now clear it
+            String err = citybites.service.CustomerProfileService.updateProfile(
+                id, "SV Blank Email", "   ", null, null, null, null);
+            assertNull(err, "blank email must be accepted (treated as null)");
+
+            citybites.model.Customer profile =
+                citybites.service.CustomerProfileService.getProfile(id);
+            assertNotNull(profile);
+            assertNull(profile.getEmail(), "email must be stored as NULL after blank input");
+        } finally {
+            try { CustomerManagementService.deleteCustomer(id); } catch (Exception ignored) {}
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(231)
+    void profileService_updateProfile_doesNotChangeUsername() {
+        int id = createProfileFixture("uname");
+        try {
+            citybites.service.CustomerProfileService.updateProfile(
+                id, "SV Uname Changed", null, null, null, null, null);
+
+            citybites.model.Customer profile =
+                citybites.service.CustomerProfileService.getProfile(id);
+            assertNotNull(profile);
+            // username must remain the one set at registration
+            assertEquals("sv_profile_uname", profile.getUsername(),
+                "profile update must not change the username");
+        } finally {
+            try { CustomerManagementService.deleteCustomer(id); } catch (Exception ignored) {}
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(232)
+    void profileService_updateProfile_doesNotChangePasswordHash() throws Exception {
+        int id = createProfileFixture("pwdhash");
+        try {
+            // Capture hash before update
+            String hashBefore;
+            try (Connection conn = DatabaseConnection.getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                     "SELECT password_hash FROM customers WHERE customer_id = ?")) {
+                ps.setInt(1, id);
+                try (ResultSet rs = ps.executeQuery()) {
+                    assertTrue(rs.next());
+                    hashBefore = rs.getString(1);
+                }
+            }
+
+            citybites.service.CustomerProfileService.updateProfile(
+                id, "SV Hash Check", null, null, null, null, "123 Test Road");
+
+            String hashAfter;
+            try (Connection conn = DatabaseConnection.getConnection();
+                 PreparedStatement ps = conn.prepareStatement(
+                     "SELECT password_hash FROM customers WHERE customer_id = ?")) {
+                ps.setInt(1, id);
+                try (ResultSet rs = ps.executeQuery()) {
+                    assertTrue(rs.next());
+                    hashAfter = rs.getString(1);
+                }
+            }
+            assertEquals(hashBefore, hashAfter,
+                "profile update must never change the password_hash");
+        } finally {
+            try { CustomerManagementService.deleteCustomer(id); } catch (Exception ignored) {}
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(233)
+    void profileService_updateProfile_doesNotBreakLogin() {
+        int id = createProfileFixture("loginchk");
+        try {
+            citybites.service.CustomerProfileService.updateProfile(
+                id, "SV Login Check", "loginchk@example.com", "+94771111111",
+                null, null, "44 Main St");
+
+            // Login must still succeed with the original password
+            java.util.Optional<citybites.model.Customer> logged =
+                citybites.service.AuthService.customerLogin("sv_profile_loginchk", "Profile1!");
+            assertTrue(logged.isPresent(), "customer must still be able to log in after profile update");
+        } finally {
+            SessionManager.logout();
+            try { CustomerManagementService.deleteCustomer(id); } catch (Exception ignored) {}
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(234)
+    void customerManagement_adminNameUpdate_preservesProfileFields() {
+        int id = createProfileFixture("admnm");
+        try {
+            // Set profile fields via profile service
+            citybites.service.CustomerProfileService.updateProfile(
+                id, "SV Admin Name", "admnm@example.com", "+94770000001",
+                java.time.LocalDate.of(1990, 1, 1), null, "1 Admin Lane");
+
+            // Admin changes only name/username — must NOT wipe profile columns
+            CustomerManagementService.updateCustomer(
+                id, "SV Admin Name Updated", "sv_profile_admnm", null, null);
+
+            citybites.model.Customer profile =
+                citybites.service.CustomerProfileService.getProfile(id);
+            assertNotNull(profile);
+            assertEquals("admnm@example.com", profile.getEmail(),
+                "admin name update must not wipe email");
+            assertEquals("+94770000001", profile.getPhoneNumber(),
+                "admin name update must not wipe phone");
+            assertEquals("1 Admin Lane", profile.getDeliveryAddress(),
+                "admin name update must not wipe delivery address");
+        } finally {
+            try { CustomerManagementService.deleteCustomer(id); } catch (Exception ignored) {}
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(235)
+    void customerManagement_adminPasswordUpdate_preservesProfileFields() {
+        int id = createProfileFixture("admpwd");
+        try {
+            citybites.service.CustomerProfileService.updateProfile(
+                id, "SV Admin Pwd", "admpwd@example.com", null, null, null, "2 Admin Road");
+
+            // Admin sets a new password — profile columns must be preserved
+            CustomerManagementService.updateCustomer(
+                id, "SV Admin Pwd", "sv_profile_admpwd", "NewPass1!", "NewPass1!");
+
+            citybites.model.Customer profile =
+                citybites.service.CustomerProfileService.getProfile(id);
+            assertNotNull(profile);
+            assertEquals("admpwd@example.com", profile.getEmail(),
+                "admin password reset must not wipe email");
+            assertEquals("2 Admin Road", profile.getDeliveryAddress(),
+                "admin password reset must not wipe delivery address");
+        } finally {
+            try { CustomerManagementService.deleteCustomer(id); } catch (Exception ignored) {}
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(236)
+    void registration_newCustomer_hasNullProfileColumns() {
+        int id = CustomerManagementService.addCustomer(
+            "SV Registration Null Profile", "sv_reg_null_prof", "RegNull1!", "RegNull1!");
+        assertTrue(id > 0);
+        try {
+            citybites.model.Customer profile =
+                citybites.service.CustomerProfileService.getProfile(id);
+            assertNotNull(profile, "getProfile must return the newly registered customer");
+            assertNull(profile.getEmail(),             "email must be null on fresh registration");
+            assertNull(profile.getPhoneNumber(),        "phone must be null on fresh registration");
+            assertNull(profile.getDateOfBirth(),        "dob must be null on fresh registration");
+            assertNull(profile.getProfileImagePath(),   "image must be null on fresh registration");
+            assertNull(profile.getDeliveryAddress(),    "address must be null on fresh registration");
+        } finally {
+            try { CustomerManagementService.deleteCustomer(id); } catch (Exception ignored) {}
+        }
+    }
+
+    // ── ProfileImageManager lifecycle ─────────────────────────────────────────
+
+    @Test @org.junit.jupiter.api.Order(237)
+    void profileImageManager_importImage_writesToProfileDir_notFoodDir() throws Exception {
+        // Create a temp PNG source file
+        Path src = Files.createTempFile("sv_test_avatar_", ".png");
+        try {
+            BufferedImage img = new BufferedImage(10, 10, BufferedImage.TYPE_INT_RGB);
+            ImageIO.write(img, "png", src.toFile());
+
+            String stored = citybites.util.ProfileImageManager.importImage(src);
+
+            assertNotNull(stored, "importImage must return a non-null stored filename");
+            assertFalse(stored.contains("/") || stored.contains("\\"),
+                "stored filename must be a plain relative name with no path separators");
+
+            // File must exist in PROFILE_DIR
+            Path resolved = citybites.util.ProfileImageManager.PROFILE_DIR.resolve(stored);
+            assertTrue(Files.exists(resolved),
+                "imported file must exist under PROFILE_DIR");
+
+            // File must NOT exist in ImageManager's food-image directory
+            Path foodPath = ImageManager.MANAGED_DIR.resolve(stored);
+            assertFalse(Files.exists(foodPath),
+                "imported profile image must not be placed in the food-images directory");
+
+            // Cleanup
+            Files.deleteIfExists(resolved);
+        } finally {
+            Files.deleteIfExists(src);
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(238)
+    void profileImageManager_importImage_storedPathIsRelativeFilenameOnly() throws Exception {
+        Path src = Files.createTempFile("sv_test_relpath_", ".jpg");
+        try {
+            BufferedImage img = new BufferedImage(5, 5, BufferedImage.TYPE_INT_RGB);
+            ImageIO.write(img, "jpg", src.toFile());
+
+            String stored = citybites.util.ProfileImageManager.importImage(src);
+
+            // Must not start with a drive letter or /
+            assertFalse(stored.startsWith("/"),        "stored path must not be absolute (Unix)");
+            assertFalse(stored.matches("^[A-Za-z]:.*"),"stored path must not be absolute (Windows)");
+            assertTrue(stored.endsWith(".jpg") || stored.endsWith(".jpeg") || stored.endsWith(".png"),
+                "stored filename must retain the image extension");
+
+            // Cleanup
+            Files.deleteIfExists(citybites.util.ProfileImageManager.PROFILE_DIR.resolve(stored));
+        } finally {
+            Files.deleteIfExists(src);
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(239)
+    void profileImageManager_importImage_doesNotModifySourceFile() throws Exception {
+        Path src = Files.createTempFile("sv_test_src_", ".png");
+        try {
+            BufferedImage img = new BufferedImage(8, 8, BufferedImage.TYPE_INT_RGB);
+            ImageIO.write(img, "png", src.toFile());
+            long sizeBefore = Files.size(src);
+
+            String stored = citybites.util.ProfileImageManager.importImage(src);
+
+            assertTrue(Files.exists(src), "source file must still exist after import");
+            assertEquals(sizeBefore, Files.size(src), "source file size must be unchanged");
+
+            // Cleanup
+            Files.deleteIfExists(citybites.util.ProfileImageManager.PROFILE_DIR.resolve(stored));
+        } finally {
+            Files.deleteIfExists(src);
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(240)
+    void profileImageManager_importImage_rejectsUnsupportedExtension() throws Exception {
+        Path src = Files.createTempFile("sv_test_bad_", ".gif");
+        try {
+            Files.writeString(src, "GIF89a"); // minimal content
+            assertThrows(java.io.IOException.class,
+                () -> citybites.util.ProfileImageManager.importImage(src),
+                "importing a .gif file must throw IOException");
+        } finally {
+            Files.deleteIfExists(src);
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(241)
+    void profileImageManager_resolveImage_blocksPathTraversal() {
+        Path result = citybites.util.ProfileImageManager.resolveImage("../../etc/passwd");
+        assertNull(result, "path traversal attempt must be blocked and return null");
+    }
+
+    @Test @org.junit.jupiter.api.Order(242)
+    void profileImageManager_resolveImage_returnNullForMissingFile() {
+        Path result = citybites.util.ProfileImageManager.resolveImage("nonexistent_sv_test.png");
+        assertNull(result, "resolveImage for a missing file must return null");
+    }
+
+    @Test @org.junit.jupiter.api.Order(243)
+    void profileImageManager_resolveImage_returnNullForNullInput() {
+        assertNull(citybites.util.ProfileImageManager.resolveImage(null),
+            "resolveImage(null) must return null");
+        assertNull(citybites.util.ProfileImageManager.resolveImage(""),
+            "resolveImage(\"\") must return null");
+        assertNull(citybites.util.ProfileImageManager.resolveImage("   "),
+            "resolveImage(blank) must return null");
+    }
+
+    @Test @org.junit.jupiter.api.Order(244)
+    void profileImageManager_extension_helper_returnsCorrectExtension() {
+        assertEquals("jpg",  citybites.util.ProfileImageManager.extension("photo.JPG"),
+            "extension must be lower-cased");
+        assertEquals("png",  citybites.util.ProfileImageManager.extension("image.png"));
+        assertEquals("jpeg", citybites.util.ProfileImageManager.extension("file.JPEG"));
+        assertEquals("",     citybites.util.ProfileImageManager.extension("nodotfile"),
+            "file without extension must return empty string");
+    }
+
+    // ── Schema verification ───────────────────────────────────────────────────
+
+    @Test @org.junit.jupiter.api.Order(245)
+    void schema_customersTable_hasAllFiveProfileColumns() throws Exception {
+        String[] expected = {"email", "phone_number", "date_of_birth",
+                             "profile_image_path", "delivery_address"};
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            for (String col : expected) {
+                try (PreparedStatement ps = conn.prepareStatement(
+                        "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                        "WHERE TABLE_SCHEMA = DATABASE() " +
+                        "AND TABLE_NAME = 'customers' " +
+                        "AND COLUMN_NAME = ?")) {
+                    ps.setString(1, col);
+                    try (ResultSet rs = ps.executeQuery()) {
+                        rs.next();
+                        assertEquals(1, rs.getInt(1),
+                            "Column '" + col + "' must exist in the customers table");
+                    }
+                }
+            }
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(246)
+    void schema_migrationKey_customerProfileColumns_isRecorded() throws Exception {
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT COUNT(*) FROM schema_migrations WHERE migration_key = ?")) {
+            ps.setString(1, "20260831_customer_profile_columns");
+            try (ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                assertEquals(1, rs.getInt(1),
+                    "Migration key '20260831_customer_profile_columns' must be recorded");
+            }
+        }
+    }
+
+    // ── Session-aware service entrypoints ─────────────────────────────────────
+
+    @Test @org.junit.jupiter.api.Order(247)
+    void profileService_getCurrentCustomerProfile_returnsNullWhenNoSession() {
+        SessionManager.logout();
+        citybites.model.Customer profile =
+            citybites.service.CustomerProfileService.getCurrentCustomerProfile();
+        assertNull(profile, "getCurrentCustomerProfile must return null when no session is active");
+    }
+
+    @Test @org.junit.jupiter.api.Order(248)
+    void profileService_updateCurrentCustomerProfile_rejectsWhenNoSession() {
+        SessionManager.logout();
+        String err = citybites.service.CustomerProfileService.updateCurrentCustomerProfile(
+            "SV No Session", null, null, null, null, null);
+        assertNotNull(err, "updateCurrentCustomerProfile must return an error when not logged in");
+        assertTrue(err.toLowerCase().contains("logged in") || err.toLowerCase().contains("session"),
+            "error message must indicate that no customer is logged in");
+    }
+
+    @Test @org.junit.jupiter.api.Order(249)
+    void profileService_getCurrentCustomerProfile_returnsProfileForLoggedInCustomer() {
+        int id = createProfileFixture("session");
+        try {
+            // Set a known email so we can verify the right profile is returned
+            citybites.service.CustomerProfileService.updateProfile(
+                id, "SV Session Profile", "session249@example.com", null, null, null, null);
+
+            // Simulate UI login: authenticate then set the session
+            java.util.Optional<citybites.model.Customer> opt =
+                citybites.service.AuthService.customerLogin("sv_profile_session", "Profile1!");
+            assertTrue(opt.isPresent(), "login must succeed for session test");
+            SessionManager.setLoggedInCustomer(opt.get());
+
+            citybites.model.Customer profile =
+                citybites.service.CustomerProfileService.getCurrentCustomerProfile();
+            assertNotNull(profile, "getCurrentCustomerProfile must return a profile when logged in");
+            assertEquals("session249@example.com", profile.getEmail(),
+                "returned profile must match the logged-in customer");
+        } finally {
+            SessionManager.logout();
+            try { CustomerManagementService.deleteCustomer(id); } catch (Exception ignored) {}
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(250)
+    void profileService_updateCurrentCustomerProfile_persistsChangesForLoggedInCustomer() {
+        int id = createProfileFixture("sessupd");
+        try {
+            // Simulate UI login: authenticate then set the session
+            java.util.Optional<citybites.model.Customer> opt =
+                citybites.service.AuthService.customerLogin("sv_profile_sessupd", "Profile1!");
+            assertTrue(opt.isPresent(), "login must succeed for session update test");
+            SessionManager.setLoggedInCustomer(opt.get());
+
+            String err = citybites.service.CustomerProfileService.updateCurrentCustomerProfile(
+                "SV Session Updated", "sessupd250@example.com", "+94770000099",
+                java.time.LocalDate.of(1992, 3, 20), null, "10 Session St");
+            assertNull(err, "updateCurrentCustomerProfile must succeed when logged in");
+
+            // Verify via direct profile fetch
+            citybites.model.Customer profile =
+                citybites.service.CustomerProfileService.getProfile(id);
+            assertNotNull(profile);
+            assertEquals("SV Session Updated",          profile.getFullName());
+            assertEquals("sessupd250@example.com",      profile.getEmail());
+            assertEquals("+94770000099",                  profile.getPhoneNumber());
+            assertEquals(java.time.LocalDate.of(1992, 3, 20), profile.getDateOfBirth());
+            assertEquals("10 Session St",               profile.getDeliveryAddress());
+        } finally {
+            SessionManager.logout();
+            try { CustomerManagementService.deleteCustomer(id); } catch (Exception ignored) {}
+        }
+    }
+
+    // ── Validation helper unit tests ──────────────────────────────────────────
+
+    @Test @org.junit.jupiter.api.Order(251)
+    void profileService_isValidEmail_acceptsAndRejectsCorrectly() {
+        assertTrue(citybites.service.CustomerProfileService.isValidEmail("user@example.com"));
+        assertTrue(citybites.service.CustomerProfileService.isValidEmail("u+tag@sub.domain.org"));
+        assertFalse(citybites.service.CustomerProfileService.isValidEmail("notanemail"));
+        assertFalse(citybites.service.CustomerProfileService.isValidEmail("@nodomain.com"));
+        assertFalse(citybites.service.CustomerProfileService.isValidEmail("missing@dot"));
+    }
+
+    @Test @org.junit.jupiter.api.Order(252)
+    void profileService_isValidPhone_acceptsAndRejectsCorrectly() {
+        assertTrue(citybites.service.CustomerProfileService.isValidPhone("+94771234567"));
+        assertTrue(citybites.service.CustomerProfileService.isValidPhone("077-123-4567"));
+        assertTrue(citybites.service.CustomerProfileService.isValidPhone("(011) 234 5678"));
+        assertFalse(citybites.service.CustomerProfileService.isValidPhone("ABCDEF"));
+        assertFalse(citybites.service.CustomerProfileService.isValidPhone(
+            "123456789012345678901")); // 21 chars — exceeds 20
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    //  Admin Customer Details — @Order(254–263)
+    // ══════════════════════════════════════════════════════════════════════════
+
+    /**
+     * 1. Admin customer details returns all profile fields.
+     * getCustomerDetails must return a fully populated Customer when the
+     * customer has had their profile filled in via CustomerProfileService.
+     */
+    @Test @org.junit.jupiter.api.Order(254)
+    void adminDetails_getCustomerDetails_returnsAllProfileFields() {
+        int id = createProfileFixture("det254");
+        try {
+            java.time.LocalDate dob = java.time.LocalDate.of(1988, 4, 22);
+            citybites.service.CustomerProfileService.updateProfile(
+                id, "SV Admin Details", "det254@example.com", "+94771000254",
+                dob, null, "254 Detail Street, Colombo");
+
+            citybites.model.Customer c =
+                citybites.service.CustomerManagementService.getCustomerDetails(id);
+            assertNotNull(c,                              "getCustomerDetails must return non-null");
+            assertEquals("SV Admin Details",             c.getFullName());
+            assertEquals("sv_profile_det254",            c.getUsername());
+            assertEquals("det254@example.com",           c.getEmail());
+            assertEquals("+94771000254",                 c.getPhoneNumber());
+            assertEquals(dob,                            c.getDateOfBirth());
+            assertEquals("254 Detail Street, Colombo",  c.getDeliveryAddress());
+            assertNotNull(c.getCreatedAt(), "createdAt must be populated");
+        } finally {
+            try { CustomerManagementService.deleteCustomer(id); } catch (Exception ignored) {}
+        }
+    }
+
+    /**
+     * 2. Customer with null optional fields loads without error.
+     * A freshly created customer has no profile columns set; getCustomerDetails
+     * must return a non-null Customer with all optional fields null.
+     */
+    @Test @org.junit.jupiter.api.Order(255)
+    void adminDetails_customerWithNullOptionalFields_loadsWithoutError() {
+        int id = createProfileFixture("nullopt255");
+        try {
+            citybites.model.Customer c =
+                citybites.service.CustomerManagementService.getCustomerDetails(id);
+            assertNotNull(c,                     "getCustomerDetails must return non-null");
+            assertNotNull(c.getFullName(),        "full name must be set");
+            assertNotNull(c.getUsername(),        "username must be set");
+            assertNull(c.getEmail(),              "email must be null for fresh customer");
+            assertNull(c.getPhoneNumber(),        "phone must be null for fresh customer");
+            assertNull(c.getDateOfBirth(),        "DOB must be null for fresh customer");
+            assertNull(c.getProfileImagePath(),   "profileImagePath must be null for fresh customer");
+            assertNull(c.getDeliveryAddress(),    "deliveryAddress must be null for fresh customer");
+        } finally {
+            try { CustomerManagementService.deleteCustomer(id); } catch (Exception ignored) {}
+        }
+    }
+
+    /**
+     * 3. DOB age calculation shown through existing helper.
+     * getCustomerDetails returns a Customer with a non-null DOB;
+     * CustomerProfileService.calculateAge() must compute the correct age.
+     */
+    @Test @org.junit.jupiter.api.Order(256)
+    void adminDetails_calculateAge_viaExistingHelper() {
+        int id = createProfileFixture("age256");
+        try {
+            java.time.LocalDate dob = java.time.LocalDate.now().minusYears(30);
+            citybites.service.CustomerProfileService.updateProfile(
+                id, "SV Age Test", null, null, dob, null, null);
+
+            citybites.model.Customer c =
+                citybites.service.CustomerManagementService.getCustomerDetails(id);
+            int age = citybites.service.CustomerProfileService.calculateAge(c.getDateOfBirth());
+            assertEquals(30, age, "calculateAge must return 30 for a customer born 30 years ago");
+
+            // Null DOB edge-case
+            assertEquals(-1, citybites.service.CustomerProfileService.calculateAge(null),
+                "calculateAge(null) must return -1");
+        } finally {
+            try { CustomerManagementService.deleteCustomer(id); } catch (Exception ignored) {}
+        }
+    }
+
+    /**
+     * 4. Admin Get All includes email and phone.
+     * After updating a customer's profile, getAllCustomers() must return
+     * their email and phone in the list.
+     */
+    @Test @org.junit.jupiter.api.Order(257)
+    void adminDetails_getAllCustomers_includesEmailAndPhone() {
+        int id = createProfileFixture("getall257");
+        try {
+            citybites.service.CustomerProfileService.updateProfile(
+                id, "SV GetAll", "getall257@example.com", "+94770000257", null, null, null);
+
+            java.util.List<citybites.model.Customer> all =
+                CustomerManagementService.getAllCustomers();
+            citybites.model.Customer found = all.stream()
+                .filter(c -> c.getCustomerId() == id)
+                .findFirst().orElse(null);
+            assertNotNull(found, "getAllCustomers must include the created customer");
+            assertEquals("getall257@example.com", found.getEmail(),
+                "getAllCustomers must populate the customer's email");
+            assertEquals("+94770000257", found.getPhoneNumber(),
+                "getAllCustomers must populate the customer's phone number");
+        } finally {
+            try { CustomerManagementService.deleteCustomer(id); } catch (Exception ignored) {}
+        }
+    }
+
+    /**
+     * 5. Admin search matches email.
+     * The email returned by getAllCustomers() must support substring filtering
+     * used by the search box in CustomerManagementFrame.
+     */
+    @Test @org.junit.jupiter.api.Order(258)
+    void adminDetails_searchMatchesEmail() {
+        int id = createProfileFixture("srchmail258");
+        try {
+            citybites.service.CustomerProfileService.updateProfile(
+                id, "SV Email Search", "srchmail258@example.com", null, null, null, null);
+
+            java.util.List<citybites.model.Customer> all =
+                CustomerManagementService.getAllCustomers();
+            String query = "srchmail258";
+            boolean found = all.stream().anyMatch(c -> {
+                String email = c.getEmail() != null ? c.getEmail().toLowerCase() : "";
+                return email.contains(query.toLowerCase());
+            });
+            assertTrue(found,
+                "Email-based search must find the customer with 'srchmail258' in their email");
+        } finally {
+            try { CustomerManagementService.deleteCustomer(id); } catch (Exception ignored) {}
+        }
+    }
+
+    /**
+     * 6. Admin search matches phone.
+     * The phone returned by getAllCustomers() must support substring filtering
+     * used by the search box in CustomerManagementFrame.
+     */
+    @Test @org.junit.jupiter.api.Order(259)
+    void adminDetails_searchMatchesPhone() {
+        int id = createProfileFixture("srchphone259");
+        try {
+            citybites.service.CustomerProfileService.updateProfile(
+                id, "SV Phone Search", null, "+94779990259", null, null, null);
+
+            java.util.List<citybites.model.Customer> all =
+                CustomerManagementService.getAllCustomers();
+            String query = "9990259";
+            boolean found = all.stream().anyMatch(c -> {
+                String phone = c.getPhoneNumber() != null ? c.getPhoneNumber() : "";
+                return phone.contains(query);
+            });
+            assertTrue(found,
+                "Phone-based search must find the customer with '9990259' in their phone number");
+        } finally {
+            try { CustomerManagementService.deleteCustomer(id); } catch (Exception ignored) {}
+        }
+    }
+
+    /**
+     * 7. Admin details do not require password hash.
+     * getCustomerDetails works correctly; the stored password field is a
+     * BCrypt hash (starts with "$2"), never the original plaintext.
+     */
+    @Test @org.junit.jupiter.api.Order(260)
+    void adminDetails_getCustomerDetails_storedPasswordIsBcryptHash() {
+        int id = createProfileFixture("pwdcheck260");
+        try {
+            citybites.model.Customer c =
+                citybites.service.CustomerManagementService.getCustomerDetails(id);
+            assertNotNull(c, "getCustomerDetails must return non-null");
+            String storedPwd = c.getPassword();
+            assertNotNull(storedPwd, "password field must not be null");
+            assertTrue(storedPwd.startsWith("$2"),
+                "Stored password must be a BCrypt hash (starts with '$2'), not plaintext");
+            assertNotEquals("Profile1!", storedPwd,
+                "Stored password must not equal the original plaintext");
+        } finally {
+            try { CustomerManagementService.deleteCustomer(id); } catch (Exception ignored) {}
+        }
+    }
+
+    /**
+     * 8. Admin core update (username-only) does not change Full Name or any profile field.
+     * Admin update scope covers only username (and optionally password).
+     * full_name, email, phone, DOB, and delivery address must be unchanged.
+     */
+    @Test @org.junit.jupiter.api.Order(261)
+    void adminDetails_adminCoreUpdate_doesNotChangeFullNameOrProfileFields() {
+        int id = createProfileFixture("preserve261");
+        try {
+            java.time.LocalDate dob = java.time.LocalDate.of(1985, 7, 10);
+            citybites.service.CustomerProfileService.updateProfile(
+                id, "SV Preserve", "preserve261@example.com", "+94778880261",
+                dob, null, "261 Preserve Road");
+
+            // Admin updates only username — fullName arg is accepted but must NOT be persisted
+            CustomerManagementService.updateCustomer(
+                id, "SV Preserve Should Not Change", "sv_profile_preserve261", null, null);
+
+            citybites.model.Customer c =
+                citybites.service.CustomerManagementService.getCustomerDetails(id);
+            // Full name must be unchanged — admin does not own it
+            assertEquals("SV Preserve",                c.getFullName(),
+                "admin update must not change full name — customers own their name");
+            assertEquals("preserve261@example.com",    c.getEmail(),
+                "email must be preserved after admin core update");
+            assertEquals("+94778880261",               c.getPhoneNumber(),
+                "phone must be preserved after admin core update");
+            assertEquals(dob,                          c.getDateOfBirth(),
+                "DOB must be preserved after admin core update");
+            assertEquals("261 Preserve Road",          c.getDeliveryAddress(),
+                "delivery address must be preserved after admin core update");
+        } finally {
+            try { CustomerManagementService.deleteCustomer(id); } catch (Exception ignored) {}
+        }
+    }
+
+    /**
+     * 9. Missing profile image resolves to placeholder/null safely.
+     * resolveImage and loadScaled must not throw for null or non-existent filenames.
+     */
+    @Test @org.junit.jupiter.api.Order(262)
+    void adminDetails_missingProfileImage_resolvesToNullSafely() {
+        // Non-existent relative filename → null (file is not on disk)
+        assertNull(citybites.util.ProfileImageManager.resolveImage("nonexistent_sv_262.jpg"),
+            "resolveImage for a non-existent filename must return null");
+
+        // loadScaled must return a placeholder icon — never throw
+        if (!java.awt.GraphicsEnvironment.isHeadless()) {
+            javax.swing.ImageIcon placeholder =
+                citybites.util.ProfileImageManager.loadScaled(null, 80, 80);
+            assertNotNull(placeholder,
+                "loadScaled(null) must return a placeholder ImageIcon, not null");
+
+            javax.swing.ImageIcon missing =
+                citybites.util.ProfileImageManager.loadScaled("nonexistent_sv_262.jpg", 80, 80);
+            assertNotNull(missing,
+                "loadScaled(missing file) must return a placeholder ImageIcon, not null");
+        }
+    }
+
+    /**
+     * 10. Invalid/non-existing customer ID is rejected cleanly.
+     * Negative and zero IDs throw IllegalArgumentException;
+     * a valid but non-existent ID throws IllegalStateException.
+     */
+    @Test @org.junit.jupiter.api.Order(263)
+    void adminDetails_invalidOrNonExistentCustomerId_isRejectedCleanly() {
+        assertThrows(IllegalArgumentException.class,
+            () -> citybites.service.CustomerManagementService.getCustomerDetails(-1),
+            "getCustomerDetails(-1) must throw IllegalArgumentException");
+
+        assertThrows(IllegalArgumentException.class,
+            () -> citybites.service.CustomerManagementService.getCustomerDetails(0),
+            "getCustomerDetails(0) must throw IllegalArgumentException");
+
+        assertThrows(IllegalStateException.class,
+            () -> citybites.service.CustomerManagementService.getCustomerDetails(999_999_999),
+            "getCustomerDetails(non-existent ID) must throw IllegalStateException");
+    }
+
+    // ── DatePicker construction smoke test ────────────────────────────────────
+
+    /**
+     * Verifies that the supported LGoodDatePicker initialization order
+     * (construct DatePicker first, set veto policy second) does not throw.
+     * Skipped automatically in a headless/CI environment.
+     */
+    @Test @org.junit.jupiter.api.Order(253)
+    void datePicker_vetoPolicy_setAfterConstruction_doesNotThrow() throws Exception {
+        if (java.awt.GraphicsEnvironment.isHeadless()) return;
+
+        java.util.concurrent.atomic.AtomicReference<Exception> caught =
+                new java.util.concurrent.atomic.AtomicReference<>();
+
+        javax.swing.SwingUtilities.invokeAndWait(() -> {
+            try {
+                com.github.lgooddatepicker.components.DatePickerSettings settings =
+                        new com.github.lgooddatepicker.components.DatePickerSettings();
+                settings.setAllowEmptyDates(true);
+                settings.setFormatForDatesCommonEra("MMM d, yyyy");
+
+                // DatePicker must exist before setVetoPolicy — this is the supported order
+                com.github.lgooddatepicker.components.DatePicker picker =
+                        new com.github.lgooddatepicker.components.DatePicker(settings);
+
+                settings.setVetoPolicy(
+                        new com.github.lgooddatepicker.optionalusertools.DateVetoPolicy() {
+                    @Override
+                    public boolean isDateAllowed(java.time.LocalDate date) {
+                        if (date == null) return true;
+                        java.time.LocalDate today   = java.time.LocalDate.now();
+                        java.time.LocalDate minDate = today.minusYears(120);
+                        return !date.isAfter(today) && !date.isBefore(minDate);
+                    }
+                });
+
+                // Confirm a known-valid date is accepted
+                picker.setDate(java.time.LocalDate.of(1990, 6, 15));
+                assertEquals(java.time.LocalDate.of(1990, 6, 15), picker.getDate(),
+                        "DatePicker must store the set date");
+
+                // Confirm a future date is vetoed (picker keeps its previous value)
+                picker.setDate(java.time.LocalDate.now().plusDays(1));
+                assertNotEquals(java.time.LocalDate.now().plusDays(1), picker.getDate(),
+                        "Future date must be rejected by the veto policy");
+
+            } catch (Exception e) {
+                caught.set(e);
+            }
+        });
+
+        assertNull(caught.get(),
+                "DatePicker veto-after-construction must not throw: "
+                + (caught.get() != null ? caught.get().getMessage() : ""));
     }
 }

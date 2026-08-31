@@ -34,6 +34,13 @@
             <version>0.4</version>
         </dependency>
 
+        <!-- LGoodDatePicker — Swing calendar date picker -->
+        <dependency>
+            <groupId>com.github.lgooddatepicker</groupId>
+            <artifactId>LGoodDatePicker</artifactId>
+            <version>11.2.1</version>
+        </dependency>
+
         <!-- JUnit 5 for automated service-layer tests -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>

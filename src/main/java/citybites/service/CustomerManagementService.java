@@ -41,6 +41,29 @@ public class CustomerManagementService {
         return dao.getById(id);
     }
 
+    /**
+     * Returns the full profile (all nullable profile columns populated) for
+     * the given customer ID. Intended for the admin "View Details" action.
+     *
+     * <p>Unlike {@link #getCustomerById}, this method fetches email, phone,
+     * date_of_birth, profile_image_path, and delivery_address.
+     *
+     * @param customerId the ID of the customer to look up — must be positive
+     * @return the fully-populated {@link Customer}
+     * @throws IllegalArgumentException if {@code customerId} is not positive
+     * @throws IllegalStateException    if no customer with that ID exists
+     */
+    public static Customer getCustomerDetails(int customerId) {
+        if (customerId < 1) {
+            throw new IllegalArgumentException("Customer ID must be positive.");
+        }
+        Customer c = dao.getProfileById(customerId);
+        if (c == null) {
+            throw new IllegalStateException("Customer record no longer exists.");
+        }
+        return c;
+    }
+
     /** Returns {@code true} if the customer has at least one order. */
     public static boolean customerHasOrders(int id) {
         return dao.hasOrders(id);
@@ -71,18 +94,31 @@ public class CustomerManagementService {
     }
 
     /**
-     * Validates and updates a customer's profile.
-     * If {@code newPassword} is non-null and non-empty the password is also changed.
+     * Validates and updates the admin-editable fields for a customer.
+     *
+     * <p>Ownership rules — admin update scope:
+     * <ul>
+     *   <li><strong>Username</strong> — always updated.</li>
+     *   <li><strong>Password hash</strong> — updated only when {@code newPassword}
+     *       is non-null and non-empty.</li>
+     * </ul>
+     *
+     * <p>The following fields are <em>not</em> updated here; customers own them
+     * through their "My Profile" screen:
+     * full_name, email, phone_number, date_of_birth, profile_image_path, delivery_address.
+     *
+     * <p>The {@code fullName} parameter is accepted for API compatibility and is
+     * displayed in the form for identification, but is <strong>not written to the
+     * database</strong> by this method.
      *
      * @return {@code true} if the update succeeded
      * @throws IllegalArgumentException for any validation failure
      */
     public static boolean updateCustomer(int id, String fullName, String username,
                                           String newPassword, String confirmPassword) {
-        String trimName = (fullName == null) ? "" : fullName.trim();
+        // fullName is intentionally not persisted — customers own their own name.
         String trimUser = (username == null) ? "" : username.trim();
 
-        validateName(trimName);
         validateUsername(trimUser);
         if (dao.existsByUsernameCaseInsensitiveExcludingId(trimUser, id)) {
             throw new IllegalArgumentException("A customer with this username already exists.");
@@ -92,9 +128,9 @@ public class CustomerManagementService {
         if (changePassword) {
             validatePassword(newPassword, confirmPassword);
             String hash = BCrypt.hashpw(newPassword, BCrypt.gensalt());
-            return dao.updateCustomerWithPassword(id, trimName, trimUser, hash);
+            return dao.updateCustomerUsernameAndPassword(id, trimUser, hash);
         } else {
-            return dao.updateCustomerProfile(id, trimName, trimUser);
+            return dao.updateCustomerUsername(id, trimUser);
         }
     }
 

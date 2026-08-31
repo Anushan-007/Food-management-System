@@ -15,7 +15,7 @@ public class CustomerManagementFrame extends javax.swing.JFrame {
     private static final java.util.logging.Logger logger =
             java.util.logging.Logger.getLogger(CustomerManagementFrame.class.getName());
 
-    // ── Table model: 4 cols — ID (hidden), Full Name, Username, Registered ───
+    // ── Table model: 6 cols — ID (hidden), Full Name, Username, Email, Phone, Registered
     private DefaultTableModel tableModel;
 
     /**
@@ -27,8 +27,8 @@ public class CustomerManagementFrame extends javax.swing.JFrame {
     public CustomerManagementFrame() {
         initComponents();
         setTitle("City Bites - Customer Management");
-        setMinimumSize(new Dimension(820, 560));
-        setSize(1020, 660);
+        setMinimumSize(new Dimension(900, 560));
+        setSize(1100, 660);
         setLocationRelativeTo(null);
         setResizable(true);
         setAddMode();
@@ -38,19 +38,19 @@ public class CustomerManagementFrame extends javax.swing.JFrame {
     @SuppressWarnings("unchecked")
     // <editor-fold defaultstate="collapsed" desc="Generated Code">//GEN-BEGIN:initComponents
     private void initComponents() {
-        txtFullName       = new javax.swing.JTextField();
-        txtUsername       = new javax.swing.JTextField();
-        txtPassword       = new javax.swing.JPasswordField();
+        txtFullName        = new javax.swing.JTextField();
+        txtUsername        = new javax.swing.JTextField();
+        txtPassword        = new javax.swing.JPasswordField();
         txtConfirmPassword = new javax.swing.JPasswordField();
-        txtSearch         = new javax.swing.JTextField();
-        btnAdd            = new javax.swing.JButton();
-        btnUpdate         = new javax.swing.JButton();
-        btnDelete         = new javax.swing.JButton();
-        btnClear          = new javax.swing.JButton();
-        tblCustomer       = new javax.swing.JTable();
-        lblFullName       = new javax.swing.JLabel();
-        lblUsername       = new javax.swing.JLabel();
-        lblPassword       = new javax.swing.JLabel();
+        txtSearch          = new javax.swing.JTextField();
+        btnAdd             = new javax.swing.JButton();
+        btnUpdate          = new javax.swing.JButton();
+        btnDelete          = new javax.swing.JButton();
+        btnClear           = new javax.swing.JButton();
+        tblCustomer        = new javax.swing.JTable();
+        lblFullName        = new javax.swing.JLabel();
+        lblUsername        = new javax.swing.JLabel();
+        lblPassword        = new javax.swing.JLabel();
         lblConfirmPassword = new javax.swing.JLabel();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
@@ -123,6 +123,13 @@ public class CustomerManagementFrame extends javax.swing.JFrame {
         confirmRow.setBackground(AppTheme.BG_CARD);
         confirmRow.add(txtConfirmPassword, BorderLayout.CENTER);
 
+        // Helper shown in Edit mode to explain why Full Name is read-only
+        lblFullNameHint = new javax.swing.JLabel(
+                "Customers manage their full name from My Profile.");
+        lblFullNameHint.setFont(AppTheme.FONT_BODY.deriveFont(10f));
+        lblFullNameHint.setForeground(AppTheme.TEXT_MUTED);
+        lblFullNameHint.setVisible(false); // hidden in Add mode
+
         // ── Field grid ───────────────────────────────────────────────
         JPanel fields = new JPanel(new GridBagLayout());
         fields.setBackground(AppTheme.BG_CARD);
@@ -134,29 +141,33 @@ public class CustomerManagementFrame extends javax.swing.JFrame {
 
         c.gridx = 0; c.gridy = 0; fields.add(lblFullName,        c);
         c.gridy = 1;               fields.add(txtFullName,        c);
-        c.gridy = 2;               fields.add(lblUsername,        c);
-        c.gridy = 3;               fields.add(txtUsername,        c);
-        c.gridy = 4;               fields.add(lblPassword,        c);
-        c.gridy = 5;               fields.add(pwRow,              c);
-        c.gridy = 6;               fields.add(lblPasswordHint,    c);
-        c.gridy = 7;               fields.add(lblConfirmPassword, c);
-        c.gridy = 8;               fields.add(confirmRow,         c);
+        c.gridy = 2;               fields.add(lblFullNameHint,    c);
+        c.gridy = 3;               fields.add(lblUsername,        c);
+        c.gridy = 4;               fields.add(txtUsername,        c);
+        c.gridy = 5;               fields.add(lblPassword,        c);
+        c.gridy = 6;               fields.add(pwRow,              c);
+        c.gridy = 7;               fields.add(lblPasswordHint,    c);
+        c.gridy = 8;               fields.add(lblConfirmPassword, c);
+        c.gridy = 9;               fields.add(confirmRow,         c);
 
         // ── Buttons ──────────────────────────────────────────────────
-        btnAdd    = AppTheme.primaryBtn("Add Customer");
-        btnUpdate = AppTheme.secondaryBtn("Update Customer");
-        btnDelete = AppTheme.dangerBtn("Delete Customer");
-        btnClear  = AppTheme.ghostBtn("Clear Form");
+        btnAdd        = AppTheme.primaryBtn("Add Customer");
+        btnUpdate     = AppTheme.secondaryBtn("Update Customer");
+        btnDelete     = AppTheme.dangerBtn("Delete Customer");
+        btnClear      = AppTheme.ghostBtn("Clear Form");
+        btnViewDetails = AppTheme.secondaryBtn("View Details");
 
         btnAdd.setMaximumSize(new Dimension(Integer.MAX_VALUE, AppTheme.BTN_H));
         btnUpdate.setMaximumSize(new Dimension(Integer.MAX_VALUE, AppTheme.BTN_H));
         btnDelete.setMaximumSize(new Dimension(Integer.MAX_VALUE, AppTheme.BTN_H));
         btnClear.setMaximumSize(new Dimension(Integer.MAX_VALUE, AppTheme.BTN_H));
+        btnViewDetails.setMaximumSize(new Dimension(Integer.MAX_VALUE, AppTheme.BTN_H));
 
-        btnAdd.addActionListener(e    -> btnAddActionPerformed(null));
-        btnUpdate.addActionListener(e -> btnUpdateActionPerformed(null));
-        btnDelete.addActionListener(e -> btnDeleteActionPerformed(null));
-        btnClear.addActionListener(e  -> btnClearActionPerformed(null));
+        btnAdd.addActionListener(e         -> btnAddActionPerformed(null));
+        btnUpdate.addActionListener(e      -> btnUpdateActionPerformed(null));
+        btnDelete.addActionListener(e      -> btnDeleteActionPerformed(null));
+        btnClear.addActionListener(e       -> btnClearActionPerformed(null));
+        btnViewDetails.addActionListener(e -> openCustomerDetails());
 
         // ── Form card ────────────────────────────────────────────────
         JPanel formCard = new JPanel();
@@ -176,6 +187,7 @@ public class CustomerManagementFrame extends javax.swing.JFrame {
         btnUpdate.setAlignmentX(Component.LEFT_ALIGNMENT);
         btnDelete.setAlignmentX(Component.LEFT_ALIGNMENT);
         btnClear.setAlignmentX(Component.LEFT_ALIGNMENT);
+        btnViewDetails.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         formCard.add(formTitle);
         formCard.add(Box.createVerticalStrut(14));
@@ -188,6 +200,15 @@ public class CustomerManagementFrame extends javax.swing.JFrame {
         formCard.add(btnDelete);
         formCard.add(Box.createVerticalStrut(6));
         formCard.add(btnClear);
+        formCard.add(Box.createVerticalStrut(14));
+        // Thin separator before View Details
+        JSeparator viewSep = new JSeparator();
+        viewSep.setForeground(AppTheme.BORDER);
+        viewSep.setMaximumSize(new Dimension(Integer.MAX_VALUE, 1));
+        viewSep.setAlignmentX(Component.LEFT_ALIGNMENT);
+        formCard.add(viewSep);
+        formCard.add(Box.createVerticalStrut(10));
+        formCard.add(btnViewDetails);
         formCard.add(Box.createVerticalGlue());
 
         JScrollPane formScroll = new JScrollPane(formCard);
@@ -195,8 +216,8 @@ public class CustomerManagementFrame extends javax.swing.JFrame {
         formScroll.setPreferredSize(new Dimension(300, 0));
 
         // ── Table panel ──────────────────────────────────────────────
-        // Model has 4 columns: ID (hidden), Full Name, Username, Registered
-        String[] columns = {"ID", "Full Name", "Username", "Registered"};
+        // Model: 6 columns — ID (hidden), Full Name, Username, Email, Phone, Registered
+        String[] columns = {"ID", "Full Name", "Username", "Email", "Phone", "Registered"};
         tableModel = new DefaultTableModel(columns, 0) {
             @Override public boolean isCellEditable(int r, int c2) { return false; }
         };
@@ -207,14 +228,32 @@ public class CustomerManagementFrame extends javax.swing.JFrame {
         // Remove the ID column from the view; model column 0 stays intact for CRUD
         tblCustomer.getColumnModel().removeColumn(tblCustomer.getColumnModel().getColumn(0));
 
+        // Proportional widths for the 5 visible columns (view col 0–4 = model col 1–5)
+        tblCustomer.getColumnModel().getColumn(0).setPreferredWidth(180); // Full Name
+        tblCustomer.getColumnModel().getColumn(1).setPreferredWidth(120); // Username
+        tblCustomer.getColumnModel().getColumn(2).setPreferredWidth(210); // Email
+        tblCustomer.getColumnModel().getColumn(3).setPreferredWidth(130); // Phone
+        tblCustomer.getColumnModel().getColumn(4).setPreferredWidth(100); // Registered
+
         tblCustomer.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) tableRowSelected();
         });
 
+        // Double-click opens View Details
+        tblCustomer.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent e) {
+                if (e.getClickCount() == 2 && selectedCustomerId > 0) {
+                    openCustomerDetails();
+                }
+            }
+        });
+
         // Search bar
         AppTheme.styleField(txtSearch);
-        txtSearch.putClientProperty("JTextField.placeholderText", "Search by name or username...");
-        txtSearch.setPreferredSize(new Dimension(260, AppTheme.BTN_H));
+        txtSearch.putClientProperty("JTextField.placeholderText",
+                "Search by name, username, email or phone...");
+        txtSearch.setPreferredSize(new Dimension(300, AppTheme.BTN_H));
         txtSearch.getDocument().addDocumentListener(new DocumentListener() {
             @Override public void insertUpdate(DocumentEvent e)  { filterTable(txtSearch.getText()); }
             @Override public void removeUpdate(DocumentEvent e)  { filterTable(txtSearch.getText()); }
@@ -262,21 +301,31 @@ public class CustomerManagementFrame extends javax.swing.JFrame {
 
     // ── Form modes ────────────────────────────────────────────────────────
 
-    /** Switches to Add mode: Add enabled, Update/Delete disabled. */
+    /** Switches to Add mode: Add enabled, Update/Delete/ViewDetails disabled. Full Name editable. */
     private void setAddMode() {
         selectedCustomerId = -1;
         btnAdd.setEnabled(true);
         btnUpdate.setEnabled(false);
         btnDelete.setEnabled(false);
+        btnViewDetails.setEnabled(false);
         lblPasswordHint.setVisible(false);
+        // Full Name is editable in Add mode (admin enters the new customer's name)
+        txtFullName.setEditable(true);
+        txtFullName.setBackground(AppTheme.BG_INPUT);
+        lblFullNameHint.setVisible(false);
     }
 
-    /** Switches to Edit mode: Add disabled, Update/Delete enabled. */
+    /** Switches to Edit mode: Add disabled, Update/Delete/ViewDetails enabled. Full Name read-only. */
     private void setEditMode() {
         btnAdd.setEnabled(false);
         btnUpdate.setEnabled(true);
         btnDelete.setEnabled(true);
+        btnViewDetails.setEnabled(true);
         lblPasswordHint.setVisible(true);
+        // Full Name is read-only in Edit mode — customers manage it themselves
+        txtFullName.setEditable(false);
+        txtFullName.setBackground(AppTheme.BG_FOOTER);
+        lblFullNameHint.setVisible(true);
     }
 
     private void togglePasswordVisibility() {
@@ -295,6 +344,8 @@ public class CustomerManagementFrame extends javax.swing.JFrame {
                     c.getCustomerId(),
                     c.getFullName(),
                     c.getUsername(),
+                    c.getEmail()       != null ? c.getEmail()       : "\u2014",
+                    c.getPhoneNumber() != null ? c.getPhoneNumber() : "\u2014",
                     formatDate(c.getCreatedAt())
                 });
             }
@@ -309,15 +360,19 @@ public class CustomerManagementFrame extends javax.swing.JFrame {
             tableModel.setRowCount(0);
             String q = (query == null) ? "" : query.toLowerCase().trim();
             for (Customer c : CustomerManagementService.getAllCustomers()) {
-                boolean nameMatch = q.isEmpty() ||
-                        c.getFullName().toLowerCase().contains(q);
-                boolean userMatch = !q.isEmpty() &&
-                        c.getUsername().toLowerCase().contains(q);
-                if (nameMatch || userMatch) {
+                String email = c.getEmail()       != null ? c.getEmail().toLowerCase()       : "";
+                String phone = c.getPhoneNumber() != null ? c.getPhoneNumber().toLowerCase() : "";
+                boolean nameMatch  = q.isEmpty() || c.getFullName().toLowerCase().contains(q);
+                boolean userMatch  = !q.isEmpty() && c.getUsername().toLowerCase().contains(q);
+                boolean emailMatch = !q.isEmpty() && email.contains(q);
+                boolean phoneMatch = !q.isEmpty() && phone.contains(q);
+                if (nameMatch || userMatch || emailMatch || phoneMatch) {
                     tableModel.addRow(new Object[]{
                         c.getCustomerId(),
                         c.getFullName(),
                         c.getUsername(),
+                        c.getEmail()       != null ? c.getEmail()       : "\u2014",
+                        c.getPhoneNumber() != null ? c.getPhoneNumber() : "\u2014",
                         formatDate(c.getCreatedAt())
                     });
                 }
@@ -334,12 +389,20 @@ public class CustomerManagementFrame extends javax.swing.JFrame {
             return;
         }
         int modelRow = tblCustomer.convertRowIndexToModel(viewRow);
-        selectedCustomerId = (int) tableModel.getValueAt(modelRow, 0); // ID from hidden col
-        txtFullName.setText(tableModel.getValueAt(modelRow, 1).toString());
-        txtUsername.setText(tableModel.getValueAt(modelRow, 2).toString());
+        selectedCustomerId = (int) tableModel.getValueAt(modelRow, 0); // ID from hidden col 0
+        txtFullName.setText(tableModel.getValueAt(modelRow, 1).toString()); // Full Name = model col 1
+        txtUsername.setText(tableModel.getValueAt(modelRow, 2).toString()); // Username  = model col 2
         txtPassword.setText("");
         txtConfirmPassword.setText("");
         setEditMode();
+    }
+
+    // ── View Details ─────────────────────────────────────────────────────
+
+    /** Opens the CustomerDetailsDialog for the currently selected customer. */
+    private void openCustomerDetails() {
+        if (selectedCustomerId < 1) return;
+        new CustomerDetailsDialog(this, selectedCustomerId).setVisible(true);
     }
 
     // ── CRUD actions ──────────────────────────────────────────────────────
@@ -473,6 +536,7 @@ public class CustomerManagementFrame extends javax.swing.JFrame {
     private javax.swing.JButton        btnUpdate;
     private javax.swing.JButton        btnDelete;
     private javax.swing.JButton        btnClear;
+    private javax.swing.JButton        btnViewDetails;
     private javax.swing.JTextField     txtFullName;
     private javax.swing.JTextField     txtUsername;
     private javax.swing.JPasswordField txtPassword;
@@ -484,6 +548,7 @@ public class CustomerManagementFrame extends javax.swing.JFrame {
     private javax.swing.JLabel         lblPassword;
     private javax.swing.JLabel         lblConfirmPassword;
     private javax.swing.JLabel         lblPasswordHint;
+    private javax.swing.JLabel         lblFullNameHint;
     private javax.swing.JCheckBox      chkShowPassword;
     // End of variables declaration//GEN-END:variables
 }

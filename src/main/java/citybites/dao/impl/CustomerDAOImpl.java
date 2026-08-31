@@ -91,7 +91,8 @@ public class CustomerDAOImpl implements CustomerDAO {
     @Override
     public List<Customer> getAll() {
         List<Customer> list = new ArrayList<>();
-        String sql = "SELECT customer_id, full_name, username, password_hash, created_at " +
+        String sql = "SELECT customer_id, full_name, username, password_hash, created_at, " +
+                     "email, phone_number " +
                      "FROM customers ORDER BY created_at DESC";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql);
@@ -106,7 +107,8 @@ public class CustomerDAOImpl implements CustomerDAO {
 
     @Override
     public Customer getById(int customerId) {
-        String sql = "SELECT customer_id, full_name, username, password_hash, created_at " +
+        String sql = "SELECT customer_id, full_name, username, password_hash, created_at, " +
+                     "email, phone_number " +
                      "FROM customers WHERE customer_id = ?";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -192,6 +194,37 @@ public class CustomerDAOImpl implements CustomerDAO {
     }
 
     @Override
+    public boolean updateCustomerUsername(int customerId, String username) {
+        String sql = "UPDATE customers SET username = ? WHERE customer_id = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, username);
+            ps.setInt(2, customerId);
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            logger.log(Level.SEVERE, "CustomerDAO.updateCustomerUsername failed.", e);
+            throw new RuntimeException("Could not update customer: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public boolean updateCustomerUsernameAndPassword(int customerId, String username,
+                                                      String passwordHash) {
+        String sql = "UPDATE customers SET username = ?, password_hash = ? " +
+                     "WHERE customer_id = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, username);
+            ps.setString(2, passwordHash);
+            ps.setInt(3, customerId);
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            logger.log(Level.SEVERE, "CustomerDAO.updateCustomerUsernameAndPassword failed.", e);
+            throw new RuntimeException("Could not update customer: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
     public boolean deleteCustomer(int customerId) {
         String sql = "DELETE FROM customers WHERE customer_id = ?";
         try (Connection conn = DatabaseConnection.getConnection();
@@ -220,16 +253,107 @@ public class CustomerDAOImpl implements CustomerDAO {
         return false;
     }
 
-    // ── Private mapper ────────────────────────────────────────────────────────
+    // ── Customer self-service profile ─────────────────────────────────────────
 
-    /** Maps a ResultSet row that includes the created_at column. */
+    @Override
+    public Customer getProfileById(int customerId) {
+        String sql =
+            "SELECT customer_id, full_name, username, password_hash, created_at, " +
+            "email, phone_number, date_of_birth, profile_image_path, delivery_address " +
+            "FROM customers WHERE customer_id = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, customerId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return mapProfile(rs);
+            }
+        } catch (SQLException e) {
+            logger.log(Level.SEVERE, "CustomerDAO.getProfileById failed.", e);
+            throw new RuntimeException("Could not fetch customer profile: " + e.getMessage(), e);
+        }
+        return null;
+    }
+
+    @Override
+    public boolean updateProfile(int customerId, String fullName, String email,
+                                 String phoneNumber, java.time.LocalDate dateOfBirth,
+                                 String profileImagePath, String deliveryAddress) {
+        String sql =
+            "UPDATE customers SET full_name = ?, email = ?, phone_number = ?, " +
+            "date_of_birth = ?, profile_image_path = ?, delivery_address = ? " +
+            "WHERE customer_id = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, fullName);
+            ps.setString(2, email);
+            ps.setString(3, phoneNumber);
+            if (dateOfBirth != null) {
+                ps.setDate(4, java.sql.Date.valueOf(dateOfBirth));
+            } else {
+                ps.setNull(4, java.sql.Types.DATE);
+            }
+            ps.setString(5, profileImagePath);
+            ps.setString(6, deliveryAddress);
+            ps.setInt(7, customerId);
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            logger.log(Level.SEVERE, "CustomerDAO.updateProfile failed.", e);
+            throw new RuntimeException("Could not update customer profile: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public boolean existsByEmailCaseInsensitiveExcludingCustomer(String email,
+                                                                  int excludeCustomerId) {
+        String sql = "SELECT COUNT(*) FROM customers " +
+                     "WHERE email IS NOT NULL AND LOWER(email) = LOWER(?) " +
+                     "AND customer_id != ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, email);
+            ps.setInt(2, excludeCustomerId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return rs.getInt(1) > 0;
+            }
+        } catch (SQLException e) {
+            logger.log(Level.SEVERE,
+                "CustomerDAO.existsByEmailCaseInsensitiveExcludingCustomer failed.", e);
+            throw new RuntimeException("Could not check email uniqueness: " + e.getMessage(), e);
+        }
+        return false;
+    }
+
+    // ── Private mappers ───────────────────────────────────────────────────────
+
+    /** Maps a ResultSet row that includes the created_at, email, and phone_number columns. */
     private static Customer mapFull(ResultSet rs) throws SQLException {
-        return new Customer(
+        Customer c = new Customer(
             rs.getInt("customer_id"),
             rs.getString("full_name"),
             rs.getString("username"),
             rs.getString("password_hash"),
             rs.getString("created_at")
+        );
+        c.setEmail(rs.getString("email"));
+        c.setPhoneNumber(rs.getString("phone_number"));
+        return c;
+    }
+
+    /** Maps a ResultSet row that includes all profile columns. */
+    private static Customer mapProfile(ResultSet rs) throws SQLException {
+        java.sql.Date sqlDate = rs.getDate("date_of_birth");
+        java.time.LocalDate dob = (sqlDate != null) ? sqlDate.toLocalDate() : null;
+        return new Customer(
+            rs.getInt("customer_id"),
+            rs.getString("full_name"),
+            rs.getString("username"),
+            rs.getString("password_hash"),
+            rs.getString("created_at"),
+            rs.getString("email"),
+            rs.getString("phone_number"),
+            dob,
+            rs.getString("profile_image_path"),
+            rs.getString("delivery_address")
         );
     }
 }

@@ -27,11 +27,16 @@ CREATE TABLE IF NOT EXISTS admins (
 
 -- ── Customers ────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS customers (
-    customer_id   INT AUTO_INCREMENT PRIMARY KEY,
-    full_name     VARCHAR(100) NOT NULL,
-    username      VARCHAR(50)  NOT NULL UNIQUE,
-    password_hash VARCHAR(100) NOT NULL,
-    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    customer_id        INT AUTO_INCREMENT PRIMARY KEY,
+    full_name          VARCHAR(100) NOT NULL,
+    username           VARCHAR(50)  NOT NULL UNIQUE,
+    password_hash      VARCHAR(100) NOT NULL,
+    email              VARCHAR(150) NULL,
+    phone_number       VARCHAR(20)  NULL,
+    date_of_birth      DATE         NULL,
+    profile_image_path VARCHAR(255) NULL,
+    delivery_address   VARCHAR(300) NULL,
+    created_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- ── Food Items ───────────────────────────────────────────────

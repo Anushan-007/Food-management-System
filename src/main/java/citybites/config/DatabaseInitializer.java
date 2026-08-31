@@ -45,6 +45,10 @@ public class DatabaseInitializer {
     private static final String MIG_ORDERS_CUSTOMER_FK_RESTRICT =
             "20260831_orders_customer_fk_restrict";
 
+    /** Migration key for adding optional profile columns to the customers table. */
+    private static final String MIG_CUSTOMER_PROFILE_COLUMNS =
+            "20260831_customer_profile_columns";
+
     private DatabaseInitializer() {}
 
     public static void initialize() {
@@ -88,11 +92,16 @@ public class DatabaseInitializer {
 
             stmt.execute("""
                 CREATE TABLE IF NOT EXISTS customers (
-                    customer_id   INT AUTO_INCREMENT PRIMARY KEY,
-                    full_name     VARCHAR(100) NOT NULL,
-                    username      VARCHAR(50)  NOT NULL UNIQUE,
-                    password_hash VARCHAR(100) NOT NULL,
-                    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    customer_id        INT AUTO_INCREMENT PRIMARY KEY,
+                    full_name          VARCHAR(100) NOT NULL,
+                    username           VARCHAR(50)  NOT NULL UNIQUE,
+                    password_hash      VARCHAR(100) NOT NULL,
+                    email              VARCHAR(150) NULL,
+                    phone_number       VARCHAR(20)  NULL,
+                    date_of_birth      DATE         NULL,
+                    profile_image_path VARCHAR(255) NULL,
+                    delivery_address   VARCHAR(300) NULL,
+                    created_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
                 """);
 
@@ -160,6 +169,7 @@ public class DatabaseInitializer {
         migrationEnforceCategoryRequired(conn);
         migrationAddCategoryDescription(conn);
         migrationOrdersCustomerFkRestrict(conn);
+        migrationAddCustomerProfileColumns(conn);
     }
 
     /** Migration 1: Add stock_quantity column if missing (pre-v1 databases). */
@@ -683,6 +693,77 @@ public class DatabaseInitializer {
             ins.setString(1, MIG_ORDERS_CUSTOMER_FK_RESTRICT);
             ins.executeUpdate();
         }
+    }
+
+    /**
+     * Migration 9 (ONE-TIME): Adds optional profile columns to the {@code customers} table.
+     *
+     * <p>Columns added (all {@code NULL}-able — existing rows are unaffected):
+     * <ul>
+     *   <li>{@code email             VARCHAR(150)}</li>
+     *   <li>{@code phone_number      VARCHAR(20)}</li>
+     *   <li>{@code date_of_birth     DATE}</li>
+     *   <li>{@code profile_image_path VARCHAR(255)}</li>
+     *   <li>{@code delivery_address  VARCHAR(300)}</li>
+     * </ul>
+     *
+     * <p>Idempotency is doubly guarded:
+     * <ul>
+     *   <li>The migration key in {@code schema_migrations} prevents re-execution.</li>
+     *   <li>Each column is individually checked via {@code information_schema}
+     *       before the {@code ALTER TABLE} — safe even if the key was cleared manually.</li>
+     * </ul>
+     */
+    private static void migrationAddCustomerProfileColumns(Connection conn) throws SQLException {
+        // Guard: already applied?
+        try (PreparedStatement check = conn.prepareStatement(
+                "SELECT COUNT(*) FROM schema_migrations WHERE migration_key = ?")) {
+            check.setString(1, MIG_CUSTOMER_PROFILE_COLUMNS);
+            ResultSet rs = check.executeQuery();
+            rs.next();
+            if (rs.getInt(1) > 0) return;
+        }
+
+        String[][] columns = {
+            {"email",                "VARCHAR(150) NULL"},
+            {"phone_number",         "VARCHAR(20)  NULL"},
+            {"date_of_birth",        "DATE         NULL"},
+            {"profile_image_path",   "VARCHAR(255) NULL"},
+            {"delivery_address",     "VARCHAR(300) NULL"},
+        };
+
+        int added = 0;
+        for (String[] col : columns) {
+            String colName = col[0];
+            String colDef  = col[1];
+            String colCheck =
+                "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() " +
+                "AND TABLE_NAME = 'customers' " +
+                "AND COLUMN_NAME = ?";
+            try (PreparedStatement ps = conn.prepareStatement(colCheck)) {
+                ps.setString(1, colName);
+                try (ResultSet rs = ps.executeQuery()) {
+                    rs.next();
+                    if (rs.getInt(1) == 0) {
+                        conn.createStatement().execute(
+                            "ALTER TABLE customers ADD COLUMN " + colName + " " + colDef);
+                        logger.info("Migration: added column '" + colName + "' to customers.");
+                        added++;
+                    }
+                }
+            }
+        }
+
+        // Record migration key
+        try (PreparedStatement ins = conn.prepareStatement(
+                "INSERT INTO schema_migrations (migration_key) VALUES (?)")) {
+            ins.setString(1, MIG_CUSTOMER_PROFILE_COLUMNS);
+            ins.executeUpdate();
+        }
+        logger.info(String.format(
+            "Migration '%s' applied: %d column(s) added to customers.",
+            MIG_CUSTOMER_PROFILE_COLUMNS, added));
     }
 
     // ── Seed Data ────────────────────────────────────────────────────────

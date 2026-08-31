@@ -75,17 +75,20 @@ public class CustomerDashboardFrame extends javax.swing.JFrame {
         JPanel recentSection = buildRecentOrderSection(customer);
 
         // ── Navigation buttons row ───────────────────────────────────
-        btnViewMenu = AppTheme.wideBtn("Browse Food Menu", AppTheme.BRAND_ACCENT);
-        btnMyOrders = AppTheme.wideBtn("My Orders",        AppTheme.BRAND_SECONDARY);
+        btnViewMenu  = AppTheme.wideBtn("Browse Food Menu", AppTheme.BRAND_ACCENT);
+        btnMyOrders  = AppTheme.wideBtn("My Orders",        AppTheme.BRAND_SECONDARY);
+        btnMyProfile = AppTheme.wideBtn("My Profile",       new Color(100, 160, 220));
         btnViewMenu.addActionListener(this::btnViewMenuActionPerformed);
         btnMyOrders.addActionListener(this::btnMyOrdersActionPerformed);
+        btnMyProfile.addActionListener(this::btnMyProfileActionPerformed);
 
-        JPanel navRow = new JPanel(new GridLayout(1, 2, 14, 0));
+        JPanel navRow = new JPanel(new GridLayout(1, 3, 14, 0));
         navRow.setBackground(AppTheme.BG_MAIN);
         navRow.setBorder(BorderFactory.createEmptyBorder(
                 0, AppTheme.PAD_LG, AppTheme.PAD_LG, AppTheme.PAD_LG));
         navRow.add(btnViewMenu);
         navRow.add(btnMyOrders);
+        navRow.add(btnMyProfile);
 
         // ── Scrollable body ──────────────────────────────────────────
         JPanel body = new JPanel();
@@ -390,6 +393,11 @@ public class CustomerDashboardFrame extends javax.swing.JFrame {
         dispose();
     }//GEN-LAST:event_btnMyOrdersActionPerformed
 
+    private void btnMyProfileActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnMyProfileActionPerformed
+        new CustomerProfileFrame().setVisible(true);
+        dispose();
+    }//GEN-LAST:event_btnMyProfileActionPerformed
+
     public static void main(String[] args) {
         java.awt.EventQueue.invokeLater(() -> new CustomerDashboardFrame().setVisible(true));
     }
@@ -397,6 +405,7 @@ public class CustomerDashboardFrame extends javax.swing.JFrame {
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JButton btnLogout;
     private javax.swing.JButton btnMyOrders;
+    private javax.swing.JButton btnMyProfile;
     private javax.swing.JButton btnViewCart;
     private javax.swing.JButton btnViewMenu;
     private javax.swing.JLabel  lblTitle;
