@@ -18,13 +18,18 @@ public class FoodItemDAOImpl implements FoodItemDAO {
 
     private static final Logger logger = Logger.getLogger(FoodItemDAOImpl.class.getName());
 
-    private static final String SELECT_COLS =
-        "food_id, food_name, price, available, stock_quantity, image_path";
+    /** Base SELECT with LEFT JOIN for category name. */
+    private static final String BASE_SQL =
+        "SELECT fi.food_id, fi.food_name, fi.price, fi.available, " +
+        "       fi.stock_quantity, fi.image_path, fi.category_id, " +
+        "       COALESCE(fc.category_name, 'Uncategorized') AS category_name " +
+        "FROM food_items fi " +
+        "LEFT JOIN food_categories fc ON fi.category_id = fc.category_id";
 
     @Override
     public List<FoodItem> findAll() {
         List<FoodItem> list = new ArrayList<>();
-        String sql = "SELECT " + SELECT_COLS + " FROM food_items ORDER BY food_id";
+        String sql = BASE_SQL + " ORDER BY fi.food_id";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
@@ -38,8 +43,7 @@ public class FoodItemDAOImpl implements FoodItemDAO {
     @Override
     public List<FoodItem> findAvailable() {
         List<FoodItem> list = new ArrayList<>();
-        String sql = "SELECT " + SELECT_COLS +
-                     " FROM food_items WHERE available = 1 ORDER BY food_id";
+        String sql = BASE_SQL + " WHERE fi.available = 1 ORDER BY fi.food_id";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
@@ -52,7 +56,7 @@ public class FoodItemDAOImpl implements FoodItemDAO {
 
     @Override
     public Optional<FoodItem> findById(int foodId) {
-        String sql = "SELECT " + SELECT_COLS + " FROM food_items WHERE food_id = ?";
+        String sql = BASE_SQL + " WHERE fi.food_id = ?";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, foodId);
@@ -68,8 +72,8 @@ public class FoodItemDAOImpl implements FoodItemDAO {
     @Override
     public int insert(FoodItem item) {
         String sql = "INSERT INTO food_items " +
-                     "(food_name, price, available, stock_quantity, image_path) " +
-                     "VALUES (?, ?, ?, ?, ?)";
+                     "(food_name, price, available, stock_quantity, image_path, category_id) " +
+                     "VALUES (?, ?, ?, ?, ?, ?)";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             ps.setString(1,  item.getFoodName());
@@ -77,6 +81,11 @@ public class FoodItemDAOImpl implements FoodItemDAO {
             ps.setBoolean(3, item.isAvailable());
             ps.setInt(4,     item.getStockQuantity());
             ps.setString(5,  item.getImagePath());
+            if (item.getCategoryId() > 0) {
+                ps.setInt(6, item.getCategoryId());
+            } else {
+                ps.setNull(6, java.sql.Types.INTEGER);
+            }
             ps.executeUpdate();
             try (ResultSet keys = ps.getGeneratedKeys()) {
                 if (keys.next()) return keys.getInt(1);
@@ -91,7 +100,8 @@ public class FoodItemDAOImpl implements FoodItemDAO {
     @Override
     public boolean update(FoodItem item) {
         String sql = "UPDATE food_items " +
-                     "SET food_name=?, price=?, available=?, stock_quantity=?, image_path=? " +
+                     "SET food_name=?, price=?, available=?, stock_quantity=?, " +
+                     "    image_path=?, category_id=? " +
                      "WHERE food_id=?";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -100,7 +110,12 @@ public class FoodItemDAOImpl implements FoodItemDAO {
             ps.setBoolean(3, item.isAvailable());
             ps.setInt(4,     item.getStockQuantity());
             ps.setString(5,  item.getImagePath());
-            ps.setInt(6,     item.getFoodId());
+            if (item.getCategoryId() > 0) {
+                ps.setInt(6, item.getCategoryId());
+            } else {
+                ps.setNull(6, java.sql.Types.INTEGER);
+            }
+            ps.setInt(7, item.getFoodId());
             return ps.executeUpdate() > 0;
         } catch (SQLException e) {
             logger.log(Level.SEVERE, "FoodItemDAO.update failed.", e);
@@ -154,6 +169,8 @@ public class FoodItemDAOImpl implements FoodItemDAO {
         item.setAvailable(rs.getBoolean("available"));
         item.setStockQuantity(rs.getInt("stock_quantity"));
         item.setImagePath(rs.getString("image_path"));
+        item.setCategoryId(rs.getInt("category_id")); // 0 when NULL (uncategorized)
+        item.setCategoryName(rs.getString("category_name")); // COALESCE -> "Uncategorized"
         return item;
     }
 }

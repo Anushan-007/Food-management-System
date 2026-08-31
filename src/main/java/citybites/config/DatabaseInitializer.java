@@ -30,13 +30,27 @@ public class DatabaseInitializer {
     /** Migration key for the one-time absolute image-path repair. */
     private static final String MIG_REPAIR_ABS_PATHS = "20260830_repair_absolute_image_paths";
 
+    /** Migration key for adding category_id FK column to food_items. */
+    private static final String MIG_ADD_CATEGORY_ID = "20260830_add_category_id_to_food_items";
+
+    /** Migration key for enforcing category_id NOT NULL + ON DELETE RESTRICT on food_items. */
+    private static final String MIG_ENFORCE_CATEGORY_REQUIRED =
+            "20260830_enforce_food_category_required";
+
+    /** Migration key for adding description column to food_categories. */
+    private static final String MIG_ADD_CATEGORY_DESCRIPTION =
+            "20260831_add_food_category_description";
+
     private DatabaseInitializer() {}
 
     public static void initialize() {
         try (Connection conn = DatabaseConnection.getConnection()) {
             createTables(conn);
-            applyMigrations(conn);
             seedAdmin(conn);
+            // seedFoodCategories must run before applyMigrations so that the
+            // "Other" category exists when migrationEnforceCategoryRequired executes.
+            seedFoodCategories(conn);
+            applyMigrations(conn);
             seedFoodItems(conn);
             seedCustomer(conn);
             logger.info("Database initialised successfully.");
@@ -50,6 +64,15 @@ public class DatabaseInitializer {
 
     private static void createTables(Connection conn) throws SQLException {
         try (Statement stmt = conn.createStatement()) {
+
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS food_categories (
+                    category_id   INT AUTO_INCREMENT PRIMARY KEY,
+                    category_name VARCHAR(100) NOT NULL UNIQUE,
+                    description   VARCHAR(255) NULL,
+                    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """);
 
             stmt.execute("""
                 CREATE TABLE IF NOT EXISTS admins (
@@ -77,7 +100,10 @@ public class DatabaseInitializer {
                     available      TINYINT(1)     NOT NULL DEFAULT 1,
                     stock_quantity INT            NOT NULL DEFAULT 0,
                     image_path     VARCHAR(500)   DEFAULT NULL,
-                    created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    category_id    INT            NOT NULL,
+                    created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    CONSTRAINT fk_food_items_cat FOREIGN KEY (category_id)
+                        REFERENCES food_categories(category_id) ON DELETE RESTRICT
                 )
                 """);
 
@@ -126,6 +152,9 @@ public class DatabaseInitializer {
         migrationAddReadyStatus(conn);
         migrationDemoStockInitialisation(conn);
         migrationRepairAbsoluteImagePaths(conn);
+        migrationAddCategoryIdColumn(conn);
+        migrationEnforceCategoryRequired(conn);
+        migrationAddCategoryDescription(conn);
     }
 
     /** Migration 1: Add stock_quantity column if missing (pre-v1 databases). */
@@ -346,6 +375,229 @@ public class DatabaseInitializer {
         return path.matches("^[A-Za-z]:[/\\\\].*") || path.startsWith("/");
     }
 
+    /**
+     * Migration 5: Adds the category_id nullable FK column to food_items.
+     * Runs at most once; tracked by schema_migrations.
+     * food_categories table must already exist before this migration runs.
+     */
+    private static void migrationAddCategoryIdColumn(Connection conn) throws SQLException {
+        try (PreparedStatement check = conn.prepareStatement(
+                "SELECT COUNT(*) FROM schema_migrations WHERE migration_key = ?")) {
+            check.setString(1, MIG_ADD_CATEGORY_ID);
+            ResultSet rs = check.executeQuery();
+            rs.next();
+            if (rs.getInt(1) > 0) return;   // already applied
+        }
+
+        // Check whether column already exists (handles manual intervention or fresh-install DDL)
+        String colCheck =
+            "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+            "WHERE TABLE_SCHEMA = DATABASE() " +
+            "AND TABLE_NAME = 'food_items' " +
+            "AND COLUMN_NAME = 'category_id'";
+        try (PreparedStatement ps = conn.prepareStatement(colCheck);
+             ResultSet rs = ps.executeQuery()) {
+            rs.next();
+            if (rs.getInt(1) == 0) {
+                conn.createStatement().execute(
+                    "ALTER TABLE food_items ADD COLUMN category_id INT NULL " +
+                    "AFTER image_path");
+                conn.createStatement().execute(
+                    "ALTER TABLE food_items ADD CONSTRAINT fk_food_items_category " +
+                    "FOREIGN KEY (category_id) REFERENCES food_categories(category_id) " +
+                    "ON DELETE SET NULL");
+                logger.info("Migration applied: category_id column + FK added to food_items.");
+            }
+        }
+
+        try (PreparedStatement ins = conn.prepareStatement(
+                "INSERT INTO schema_migrations (migration_key) VALUES (?)")) {
+            ins.setString(1, MIG_ADD_CATEGORY_ID);
+            ins.executeUpdate();
+        }
+    }
+
+    /**
+     * Migration 6 (ONE-TIME): Enforces category_id NOT NULL + ON DELETE RESTRICT on food_items.
+     *
+     * <p>Steps:
+     * <ol>
+     *   <li>Ensure the "Other" fall-back category exists (INSERT IGNORE).</li>
+     *   <li>Assign "Other" to every food_items row whose category_id is NULL.</li>
+     *   <li>Assign "Other" to every food_items row whose category_id references a
+     *       non-existent category (orphan repair).</li>
+     *   <li>If category_id is still nullable (IS_NULLABLE = 'YES'):
+     *     <ul>
+     *       <li>Discover the existing FK constraint name from information_schema.</li>
+     *       <li>DROP the old FK (which had ON DELETE SET NULL).</li>
+     *       <li>MODIFY the column to INT NOT NULL.</li>
+     *       <li>ADD a new FK with ON DELETE RESTRICT.</li>
+     *     </ul>
+     *   </li>
+     *   <li>Record the migration key (idempotent guard on future startups).</li>
+     * </ol>
+     *
+     * <p>Note: ALTER TABLE causes an implicit commit in MySQL; full transactional
+     * rollback is not possible for DDL. The data-only UPDATEs (steps 2–3) are safe
+     * to re-run because step 1 re-checks IS_NULLABLE before performing any DDL.
+     */
+    private static void migrationEnforceCategoryRequired(Connection conn) throws SQLException {
+        // Guard: already applied?
+        try (PreparedStatement check = conn.prepareStatement(
+                "SELECT COUNT(*) FROM schema_migrations WHERE migration_key = ?")) {
+            check.setString(1, MIG_ENFORCE_CATEGORY_REQUIRED);
+            ResultSet rs = check.executeQuery();
+            rs.next();
+            if (rs.getInt(1) > 0) return;
+        }
+
+        // Step 1: Ensure "Other" category exists (idempotent)
+        conn.createStatement().execute(
+            "INSERT IGNORE INTO food_categories (category_name) VALUES ('Other')");
+
+        // Step 2: Resolve "Other" ID (never hardcoded — always fetched from DB)
+        int otherId;
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT category_id FROM food_categories WHERE category_name = 'Other'");
+             ResultSet rs = ps.executeQuery()) {
+            if (!rs.next()) {
+                throw new SQLException("'Other' category not found after INSERT IGNORE.");
+            }
+            otherId = rs.getInt(1);
+        }
+
+        // Step 3: Assign "Other" to uncategorised rows
+        try (PreparedStatement ps = conn.prepareStatement(
+                "UPDATE food_items SET category_id = ? WHERE category_id IS NULL")) {
+            ps.setInt(1, otherId);
+            int n = ps.executeUpdate();
+            if (n > 0) logger.info(String.format(
+                "Migration '%s': assigned 'Other' to %d uncategorised food item(s).",
+                MIG_ENFORCE_CATEGORY_REQUIRED, n));
+        }
+
+        // Step 4: Assign "Other" to rows with orphaned (non-existent) category references
+        try (PreparedStatement ps = conn.prepareStatement(
+                "UPDATE food_items SET category_id = ? " +
+                "WHERE category_id NOT IN (SELECT category_id FROM food_categories)")) {
+            ps.setInt(1, otherId);
+            int n = ps.executeUpdate();
+            if (n > 0) logger.info(String.format(
+                "Migration '%s': reassigned 'Other' to %d orphaned food item(s).",
+                MIG_ENFORCE_CATEGORY_REQUIRED, n));
+        }
+
+        // Step 5: Check whether DDL change is still needed
+        String isNullable;
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT IS_NULLABLE FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() " +
+                "AND TABLE_NAME = 'food_items' " +
+                "AND COLUMN_NAME = 'category_id'");
+             ResultSet rs = ps.executeQuery()) {
+            if (!rs.next()) {
+                throw new SQLException("category_id column not found in information_schema.");
+            }
+            isNullable = rs.getString(1);
+        }
+
+        if ("YES".equals(isNullable)) {
+            // Step 6: Discover the existing FK constraint name (do NOT hardcode it)
+            String fkName = null;
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE " +
+                    "WHERE TABLE_SCHEMA = DATABASE() " +
+                    "AND TABLE_NAME = 'food_items' " +
+                    "AND COLUMN_NAME = 'category_id' " +
+                    "AND REFERENCED_TABLE_NAME = 'food_categories'");
+                 ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) fkName = rs.getString(1);
+            }
+
+            // Step 7: Drop old FK (if it exists)
+            if (fkName != null) {
+                conn.createStatement().execute(
+                    "ALTER TABLE food_items DROP FOREIGN KEY " + fkName);
+                logger.info("Migration: dropped FK '" + fkName + "' (ON DELETE SET NULL).");
+            }
+
+            // Step 8: Change column to NOT NULL
+            conn.createStatement().execute(
+                "ALTER TABLE food_items MODIFY COLUMN category_id INT NOT NULL");
+
+            // Step 9: Recreate FK with ON DELETE RESTRICT
+            conn.createStatement().execute(
+                "ALTER TABLE food_items ADD CONSTRAINT fk_food_items_cat " +
+                "FOREIGN KEY (category_id) REFERENCES food_categories(category_id) " +
+                "ON DELETE RESTRICT");
+
+            logger.info(String.format(
+                "Migration '%s': category_id enforced NOT NULL + ON DELETE RESTRICT.",
+                MIG_ENFORCE_CATEGORY_REQUIRED));
+        } else {
+            logger.info(String.format(
+                "Migration '%s': category_id already NOT NULL — DDL skipped.",
+                MIG_ENFORCE_CATEGORY_REQUIRED));
+        }
+
+        // Step 10: Record migration key
+        try (PreparedStatement ins = conn.prepareStatement(
+                "INSERT INTO schema_migrations (migration_key) VALUES (?)")) {
+            ins.setString(1, MIG_ENFORCE_CATEGORY_REQUIRED);
+            ins.executeUpdate();
+        }
+    }
+
+    /**
+     * Migration 7 (ONE-TIME): Adds the optional {@code description VARCHAR(255) NULL}
+     * column to {@code food_categories}.
+     *
+     * <p>Idempotency is doubly guarded:
+     * <ul>
+     *   <li>The migration key in {@code schema_migrations} prevents a second execution.</li>
+     *   <li>The {@code information_schema} column check prevents a duplicate ALTER TABLE
+     *       even if the key was somehow cleared (e.g. manual DB restore).</li>
+     * </ul>
+     * Existing category rows are not affected — {@code description} defaults to NULL.
+     */
+    private static void migrationAddCategoryDescription(Connection conn) throws SQLException {
+        // Guard: already applied?
+        try (PreparedStatement check = conn.prepareStatement(
+                "SELECT COUNT(*) FROM schema_migrations WHERE migration_key = ?")) {
+            check.setString(1, MIG_ADD_CATEGORY_DESCRIPTION);
+            ResultSet rs = check.executeQuery();
+            rs.next();
+            if (rs.getInt(1) > 0) return;
+        }
+
+        // Check whether column already exists (handles fresh-install DDL that already has it)
+        String colCheck =
+            "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+            "WHERE TABLE_SCHEMA = DATABASE() " +
+            "AND TABLE_NAME = 'food_categories' " +
+            "AND COLUMN_NAME = 'description'";
+        try (PreparedStatement ps = conn.prepareStatement(colCheck);
+             ResultSet rs = ps.executeQuery()) {
+            rs.next();
+            if (rs.getInt(1) == 0) {
+                conn.createStatement().execute(
+                    "ALTER TABLE food_categories " +
+                    "ADD COLUMN description VARCHAR(255) NULL AFTER category_name");
+                logger.info("Migration applied: description column added to food_categories.");
+            } else {
+                logger.info("Migration '" + MIG_ADD_CATEGORY_DESCRIPTION +
+                            "': description column already exists — DDL skipped.");
+            }
+        }
+
+        // Record migration key
+        try (PreparedStatement ins = conn.prepareStatement(
+                "INSERT INTO schema_migrations (migration_key) VALUES (?)")) {
+            ins.setString(1, MIG_ADD_CATEGORY_DESCRIPTION);
+            ins.executeUpdate();
+        }
+    }
+
     // ── Seed Data ────────────────────────────────────────────────────────
 
     private static void seedAdmin(Connection conn) throws SQLException {
@@ -367,9 +619,48 @@ public class DatabaseInitializer {
     }
 
     /**
+     * Seeds default food categories on a fresh database (when food_categories is empty).
+     * "Other" is always listed first so that it is the mandatory fallback category
+     * available before any migrations run.
+     */
+    private static void seedFoodCategories(Connection conn) throws SQLException {
+        try (ResultSet rs = conn.createStatement()
+                .executeQuery("SELECT COUNT(*) FROM food_categories")) {
+            rs.next();
+            if (rs.getInt(1) > 0) return;
+        }
+        String sql = "INSERT INTO food_categories (category_name) VALUES (?)";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            for (String name : new String[]{
+                    "Other", "Rice Dishes", "Kottu", "Burgers", "Sandwiches",
+                    "Seafood", "Beverages", "Desserts"}) {
+                ps.setString(1, name);
+                ps.addBatch();
+            }
+            ps.executeBatch();
+            logger.info("Default food categories seeded (including 'Other' fallback).");
+        }
+    }
+
+    /**
+     * Returns the category_id for the given category name, or -1 if not found.
+     * Used by seedFoodItems to resolve category IDs without hardcoding them.
+     */
+    private static int getCategoryIdByName(Connection conn, String name) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT category_id FROM food_categories WHERE category_name = ?")) {
+            ps.setString(1, name);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getInt(1) : -1;
+            }
+        }
+    }
+
+    /**
      * Seeds the initial menu. Only runs when the food_items table is empty.
-     * Stock quantities are included here so that a fresh database has correct
-     * inventory without requiring the one-time migration.
+     * Stock quantities and category_id values are included so that a fresh
+     * database has correct inventory and categorisation without any migration.
+     * Category IDs are resolved by name — never hardcoded.
      */
     private static void seedFoodItems(Connection conn) throws SQLException {
         try (ResultSet rs = conn.createStatement()
@@ -377,25 +668,43 @@ public class DatabaseInitializer {
             rs.next();
             if (rs.getInt(1) > 0) return;
         }
-        String sql = "INSERT INTO food_items (food_name, price, available, stock_quantity) " +
-                     "VALUES (?, ?, ?, ?)";
+
+        // Resolve category IDs by name; fall back to "Other" if a category is missing.
+        int riceId     = getCategoryIdByName(conn, "Rice Dishes");
+        int kottuId    = getCategoryIdByName(conn, "Kottu");
+        int burgersId  = getCategoryIdByName(conn, "Burgers");
+        int sandwichId = getCategoryIdByName(conn, "Sandwiches");
+        int seafoodId  = getCategoryIdByName(conn, "Seafood");
+        int otherId    = getCategoryIdByName(conn, "Other");
+
+        // If a named category is missing (should not happen on fresh install), use "Other"
+        if (riceId     < 0) riceId     = otherId;
+        if (kottuId    < 0) kottuId    = otherId;
+        if (burgersId  < 0) burgersId  = otherId;
+        if (sandwichId < 0) sandwichId = otherId;
+        if (seafoodId  < 0) seafoodId  = otherId;
+
+        String sql =
+            "INSERT INTO food_items (food_name, price, available, stock_quantity, category_id) " +
+            "VALUES (?, ?, ?, ?, ?)";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             Object[][] items = {
-                {"Chicken Fried Rice",  850.00, true, 25},
-                {"Chicken Kottu",       750.00, true, 20},
-                {"Cheese Burger",       650.00, true, 30},
-                {"Vegetable Sandwich",  450.00, true, 18},
-                {"Fish & Chips",        950.00, true, 15},
+                {"Chicken Fried Rice",  850.00, true, 25, riceId},
+                {"Chicken Kottu",       750.00, true, 20, kottuId},
+                {"Cheese Burger",       650.00, true, 30, burgersId},
+                {"Vegetable Sandwich",  450.00, true, 18, sandwichId},
+                {"Fish & Chips",        950.00, true, 15, seafoodId},
             };
             for (Object[] item : items) {
                 ps.setString(1,  (String)  item[0]);
                 ps.setDouble(2,  (Double)  item[1]);
                 ps.setBoolean(3, (Boolean) item[2]);
                 ps.setInt(4,     (Integer) item[3]);
+                ps.setInt(5,     (Integer) item[4]);
                 ps.addBatch();
             }
             ps.executeBatch();
-            logger.info("Sample food items seeded with stock quantities.");
+            logger.info("Sample food items seeded with stock quantities and categories.");
         }
     }
 

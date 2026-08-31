@@ -87,6 +87,13 @@ public class AdminDashboardFrame extends javax.swing.JFrame {
             this::btnManageFoodActionPerformed
         );
 
+        JPanel manageCatCard = buildActionCard(
+            "Manage Categories",
+            "Create, rename or remove food categories",
+            new Color(100, 160, 220),
+            this::btnManageCategoriesActionPerformed
+        );
+
         JPanel viewOrdersCard = buildActionCard(
             "Customer Orders",
             "View and update status of all customer orders",
@@ -94,11 +101,12 @@ public class AdminDashboardFrame extends javax.swing.JFrame {
             this::btnViewOrdersActionPerformed
         );
 
-        JPanel actionsRow = new JPanel(new GridLayout(1, 2, 14, 0));
+        JPanel actionsRow = new JPanel(new GridLayout(1, 3, 14, 0));
         actionsRow.setBackground(AppTheme.BG_MAIN);
         actionsRow.setBorder(BorderFactory.createEmptyBorder(
                 0, AppTheme.PAD_LG, AppTheme.PAD_LG, AppTheme.PAD_LG));
         actionsRow.add(manageFoodCard);
+        actionsRow.add(manageCatCard);
         actionsRow.add(viewOrdersCard);
 
         // ── Section header bar ───────────────────────────────────────
@@ -184,6 +192,11 @@ public class AdminDashboardFrame extends javax.swing.JFrame {
         new FoodManagementFrame().setVisible(true);
         dispose();
     }//GEN-LAST:event_btnManageFoodActionPerformed
+
+    private void btnManageCategoriesActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnManageCategoriesActionPerformed
+        new CategoryManagementFrame().setVisible(true);
+        dispose();
+    }//GEN-LAST:event_btnManageCategoriesActionPerformed
 
     private void btnViewOrdersActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnViewOrdersActionPerformed
         new AdminOrdersFrame().setVisible(true);

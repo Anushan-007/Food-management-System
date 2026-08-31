@@ -5,9 +5,11 @@ import citybites.config.DatabaseInitializer;
 import citybites.data.DataStore;
 import citybites.model.CartItem;
 import citybites.model.Customer;
+import citybites.model.FoodCategory;
 import citybites.model.FoodItem;
 import citybites.model.Order;
 import citybites.service.AuthService;
+import citybites.service.FoodCategoryService;
 import citybites.service.FoodService;
 import citybites.service.OrderService;
 import citybites.util.ImageManager;
@@ -719,14 +721,18 @@ class ServiceValidationTest {
         Path legacySrc = makeTempJpg(tmp, "legacy_photo.jpg");
         String absPath = legacySrc.toAbsolutePath().toString();
 
-        // Insert directly via JDBC bypassing the service layer (simulates a pre-fix record)
+        // Insert directly via JDBC bypassing the service layer (simulates a pre-fix record).
+        // category_id is required (NOT NULL) — use "Other" as the mandatory fallback.
         int legacyId;
+        int otherCatId87 = FoodCategoryService.getOtherCategoryId();
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(
-                 "INSERT INTO food_items (food_name, price, available, stock_quantity, image_path) " +
-                 "VALUES ('SV_TestFood_ImgLegacy1', 50.0, 1, 1, ?)",
+                 "INSERT INTO food_items " +
+                 "(food_name, price, available, stock_quantity, image_path, category_id) " +
+                 "VALUES ('SV_TestFood_ImgLegacy1', 50.0, 1, 1, ?, ?)",
                  Statement.RETURN_GENERATED_KEYS)) {
             ps.setString(1, absPath);
+            ps.setInt(2, otherCatId87);
             ps.executeUpdate();
             ResultSet keys = ps.getGeneratedKeys();
             assertTrue(keys.next(), "INSERT must return generated key");
@@ -771,13 +777,17 @@ class ServiceValidationTest {
             ? "C:\\NonExistent\\ghost_image_" + System.currentTimeMillis() + ".jpg"
             : "/nonexistent/ghost_image_" + System.currentTimeMillis() + ".jpg");
 
+        // category_id is required (NOT NULL) — use "Other" as the mandatory fallback.
         int ghostId;
+        int otherCatId88 = FoodCategoryService.getOtherCategoryId();
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(
-                 "INSERT INTO food_items (food_name, price, available, stock_quantity, image_path) " +
-                 "VALUES ('SV_TestFood_ImgLegacy2', 50.0, 1, 1, ?)",
+                 "INSERT INTO food_items " +
+                 "(food_name, price, available, stock_quantity, image_path, category_id) " +
+                 "VALUES ('SV_TestFood_ImgLegacy2', 50.0, 1, 1, ?, ?)",
                  Statement.RETURN_GENERATED_KEYS)) {
             ps.setString(1, fakePath);
+            ps.setInt(2, otherCatId88);
             ps.executeUpdate();
             ResultSet keys = ps.getGeneratedKeys();
             assertTrue(keys.next());
@@ -803,13 +813,445 @@ class ServiceValidationTest {
     }
 
     // ══════════════════════════════════════════════════════════════════════
+    // FOOD CATEGORY MANAGEMENT
+    // ══════════════════════════════════════════════════════════════════════
+
+    @Test @org.junit.jupiter.api.Order(100)
+    void categoryCanBeCreatedAndRetrieved() {
+        int id = FoodCategoryService.addCategory("SV_TestCategory");
+        try {
+            assertTrue(id > 0, "addCategory must return a positive ID");
+            boolean found = FoodCategoryService.getAllCategories().stream()
+                .anyMatch(c -> c.getCategoryId() == id);
+            assertTrue(found, "New category must appear in getAllCategories()");
+        } finally {
+            FoodCategoryService.deleteCategory(id);
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(101)
+    void categoryNameCanBeUpdated() {
+        int id = FoodCategoryService.addCategory("SV_ToCatUpdate");
+        try {
+            boolean ok = FoodCategoryService.updateCategory(id, "SV_ToCatUpdated");
+            assertTrue(ok, "updateCategory must return true");
+            boolean found = FoodCategoryService.getAllCategories().stream()
+                .anyMatch(c -> c.getCategoryId() == id
+                            && "SV_ToCatUpdated".equals(c.getCategoryName()));
+            assertTrue(found, "Updated category name must be reflected in getAllCategories()");
+        } finally {
+            FoodCategoryService.deleteCategory(id);
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(102)
+    void foodItemCanBeAssignedToCategory() throws Exception {
+        int catId = FoodCategoryService.addCategory("SV_AssignCategory");
+        int foodId = -1;
+        try {
+            foodId = FoodService.addFoodItem("SV_CatAssignFood", 300.0, true, 5, null, catId);
+            assertTrue(foodId > 0, "addFoodItem with category must return positive ID");
+            FoodItem saved = getFoodById(foodId);
+            assertNotNull(saved, "Food item with category must be retrievable");
+            assertEquals(catId, saved.getCategoryId(),
+                "Stored category_id must match the assigned category");
+        } finally {
+            if (foodId > 0) FoodService.deleteFoodItem(foodId);
+            FoodCategoryService.deleteCategory(catId);
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(104)
+    void duplicateCategoryNameIsCorrectlyRejected() {
+        int id = FoodCategoryService.addCategory("SV_DupCategory");
+        try {
+            assertThrows(RuntimeException.class,
+                () -> FoodCategoryService.addCategory("SV_DupCategory"),
+                "CORRECTLY REJECTED: duplicate category name must throw RuntimeException");
+        } finally {
+            FoodCategoryService.deleteCategory(id);
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // CATEGORY ENFORCEMENT TESTS (@Order 105-114)
+    // ══════════════════════════════════════════════════════════════════════
+
+    @Test @org.junit.jupiter.api.Order(105)
+    void categoryIdColumnIsNotNull() throws Exception {
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT IS_NULLABLE FROM information_schema.COLUMNS " +
+                 "WHERE TABLE_SCHEMA = DATABASE() " +
+                 "AND TABLE_NAME = 'food_items' " +
+                 "AND COLUMN_NAME = 'category_id'")) {
+            ResultSet rs = ps.executeQuery();
+            assertTrue(rs.next(), "category_id column must exist in food_items");
+            assertEquals("NO", rs.getString(1),
+                "category_id must be NOT NULL — mandatory category enforcement");
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(106)
+    void categoryForeignKeyHasRestrictDeleteRule() throws Exception {
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT rc.DELETE_RULE " +
+                 "FROM information_schema.REFERENTIAL_CONSTRAINTS rc " +
+                 "JOIN information_schema.KEY_COLUMN_USAGE kcu " +
+                 "  ON rc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME " +
+                 "  AND rc.CONSTRAINT_SCHEMA = kcu.TABLE_SCHEMA " +
+                 "WHERE kcu.TABLE_SCHEMA = DATABASE() " +
+                 "AND kcu.TABLE_NAME = 'food_items' " +
+                 "AND kcu.COLUMN_NAME = 'category_id' " +
+                 "AND kcu.REFERENCED_TABLE_NAME = 'food_categories'")) {
+            ResultSet rs = ps.executeQuery();
+            assertTrue(rs.next(),
+                "FK from food_items.category_id to food_categories must exist");
+            String rule = rs.getString(1);
+            assertTrue("RESTRICT".equals(rule) || "NO ACTION".equals(rule),
+                "FK DELETE_RULE must be RESTRICT or NO ACTION, was: " + rule);
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(107)
+    void noUncategorisedFoodItemsExist() throws Exception {
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT COUNT(*) FROM food_items WHERE category_id IS NULL")) {
+            ResultSet rs = ps.executeQuery();
+            rs.next();
+            assertEquals(0, rs.getInt(1),
+                "No food_items row should have a NULL category_id");
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(108)
+    void categoryMigrationIsIdempotent() throws Exception {
+        DatabaseInitializer.initialize();   // simulate application restart
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT COUNT(*) FROM schema_migrations WHERE migration_key = ?")) {
+            ps.setString(1, "20260830_enforce_food_category_required");
+            ResultSet rs = ps.executeQuery();
+            rs.next();
+            assertEquals(1, rs.getInt(1),
+                "Migration key must appear exactly once in schema_migrations (idempotent)");
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(109)
+    void deletingInUseCategoryIsRejectedAndBothUnchanged() throws Exception {
+        int catId = FoodCategoryService.addCategory("SV_InUseCat");
+        int foodId = -1;
+        try {
+            foodId = FoodService.addFoodItem("SV_InUseCatFood", 400.0, true, 10, null, catId);
+            final int fid = foodId;
+            final int cid = catId;
+            IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> FoodCategoryService.deleteCategory(cid),
+                "Deleting a category assigned to food items must throw IllegalStateException");
+            assertTrue(ex.getMessage().contains("cannot be deleted"),
+                "Exception message must mention 'cannot be deleted'");
+            // Both category and food item must still exist after the rejected deletion
+            boolean catStillExists = FoodCategoryService.getAllCategories().stream()
+                .anyMatch(c -> c.getCategoryId() == cid);
+            assertTrue(catStillExists,
+                "Category must still exist after a rejected deletion attempt");
+            assertNotNull(getFoodById(fid),
+                "Food item must still exist after a rejected deletion attempt");
+        } finally {
+            if (foodId > 0) FoodService.deleteFoodItem(foodId);
+            FoodCategoryService.deleteCategory(catId);
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(110)
+    void deletingUnusedCategorySucceeds() {
+        int id = FoodCategoryService.addCategory("SV_UnusedCat");
+        assertTrue(FoodCategoryService.deleteCategory(id),
+            "Deleting a category with no food items must return true");
+        boolean stillExists = FoodCategoryService.getAllCategories().stream()
+            .anyMatch(c -> c.getCategoryId() == id);
+        assertFalse(stillExists,
+            "Deleted category must not appear in getAllCategories()");
+    }
+
+    @Test @org.junit.jupiter.api.Order(111)
+    void addingFoodWithZeroCategoryIdIsCorrectlyRejected() {
+        assertThrows(IllegalArgumentException.class,
+            () -> FoodService.addFoodItem("SV_NoCatFood", 100.0, true, 5, null, 0),
+            "CORRECTLY REJECTED: addFoodItem with categoryId=0 must throw IllegalArgumentException");
+    }
+
+    @Test @org.junit.jupiter.api.Order(112)
+    void updatingFoodWithZeroCategoryIdIsCorrectlyRejected() {
+        assertThrows(IllegalArgumentException.class,
+            () -> FoodService.updateFoodItem(testFoodId, "SV_TestFood", 500.0, true, 50, null, 0),
+            "CORRECTLY REJECTED: updateFoodItem with categoryId=0 must throw IllegalArgumentException");
+    }
+
+    @Test @org.junit.jupiter.api.Order(113)
+    void menuFilterNameAndCategoryLogicIsCorrect() throws Exception {
+        int catId = FoodCategoryService.addCategory("SV_MenuFilterCat");
+        int foodId = -1;
+        try {
+            foodId = FoodService.addFoodItem("SV_SpecialDish", 200.0, true, 5, null, catId);
+            List<FoodItem> all = FoodService.getAvailableFoodItems();
+            final int fid = foodId;
+            final int cid = catId;
+
+            // Name-only filter must find the item
+            List<FoodItem> byName = filterMenu(all, "specialdish", 0);
+            assertTrue(byName.stream().anyMatch(f -> f.getFoodId() == fid),
+                "Name-only filter must find SV_SpecialDish");
+
+            // Category-only filter must find the item
+            List<FoodItem> byCat = filterMenu(all, "", cid);
+            assertTrue(byCat.stream().anyMatch(f -> f.getFoodId() == fid),
+                "Category-only filter must find SV_SpecialDish");
+
+            // Combined (name + matching category) must find the item
+            List<FoodItem> both = filterMenu(all, "special", cid);
+            assertTrue(both.stream().anyMatch(f -> f.getFoodId() == fid),
+                "Name+category filter must find SV_SpecialDish");
+
+            // Combined with a non-matching category must not find the item
+            int otherId = FoodCategoryService.getAllCategories().stream()
+                .filter(c -> c.getCategoryId() != cid)
+                .findFirst()
+                .map(FoodCategory::getCategoryId)
+                .orElse(-999);
+            List<FoodItem> noMatch = filterMenu(all, "special", otherId);
+            assertFalse(noMatch.stream().anyMatch(f -> f.getFoodId() == fid),
+                "Name+wrong-category filter must not find SV_SpecialDish");
+        } finally {
+            if (foodId > 0) FoodService.deleteFoodItem(foodId);
+            FoodCategoryService.deleteCategory(catId);
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(114)
+    void menuCategoryIdZeroShowsAllCategories() {
+        List<FoodItem> all = FoodService.getAvailableFoodItems();
+        List<FoodItem> filtered = filterMenu(all, "", 0);
+        assertEquals(all.size(), filtered.size(),
+            "categoryId=0 must act as 'show all' — no category filter applied");
+    }
+
+    @Test @org.junit.jupiter.api.Order(115)
+    void addFoodWithNonExistingCategoryIdIsCorrectlyRejected() {
+        // Create and immediately delete a category to obtain a positive but non-existing ID
+        int deletedId = FoodCategoryService.addCategory("SV_GhostCat");
+        FoodCategoryService.deleteCategory(deletedId);
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+            () -> FoodService.addFoodItem("SV_GhostCatFood", 100.0, true, 5, null, deletedId),
+            "CORRECTLY REJECTED: addFoodItem with non-existing categoryId must throw " +
+            "IllegalArgumentException");
+        assertTrue(ex.getMessage().contains("does not exist"),
+            "Exception message must mention 'does not exist'");
+
+        // No food item must have been created
+        boolean created = FoodService.getAllFoodItems().stream()
+            .anyMatch(f -> "SV_GhostCatFood".equals(f.getFoodName()));
+        assertFalse(created, "No food item must be created when category does not exist");
+    }
+
+    @Test @org.junit.jupiter.api.Order(116)
+    void updateFoodWithNonExistingCategoryIdIsCorrectlyRejected() throws Exception {
+        // Create and immediately delete a category to obtain a positive but non-existing ID
+        int deletedId = FoodCategoryService.addCategory("SV_GhostCat2");
+        FoodCategoryService.deleteCategory(deletedId);
+
+        // Capture exact current state of the shared test food item
+        FoodItem before = getFoodById(testFoodId);
+        assertNotNull(before, "Test food item must exist before the rejected update");
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+            () -> FoodService.updateFoodItem(
+                testFoodId, "SV_TestFood_GHOST", 999.0, true, 99, null, deletedId),
+            "CORRECTLY REJECTED: updateFoodItem with non-existing categoryId must throw " +
+            "IllegalArgumentException");
+        assertTrue(ex.getMessage().contains("does not exist"),
+            "Exception message must mention 'does not exist'");
+
+        // Verify no food item fields were changed
+        FoodItem after = getFoodById(testFoodId);
+        assertNotNull(after, "Food item must still exist after rejected update");
+        assertEquals(before.getFoodName(),   after.getFoodName(),
+            "food_name must be unchanged after rejected update");
+        assertEquals(before.getPrice(),      after.getPrice(), 0.01,
+            "price must be unchanged after rejected update");
+        assertEquals(before.getCategoryId(), after.getCategoryId(),
+            "category_id must be unchanged after rejected update");
+        assertEquals(before.getStockQuantity(), after.getStockQuantity(),
+            "stock_quantity must be unchanged after rejected update");
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // CATEGORY DESCRIPTION (@Order 117-125)
+    // ══════════════════════════════════════════════════════════════════════
+
+    @Test @org.junit.jupiter.api.Order(117)
+    void categoryDescriptionPersistsAfterCreate() {
+        int id = FoodCategoryService.addCategory("SV_DescCreate", "A test description");
+        try {
+            Optional<FoodCategory> found = FoodCategoryService.getCategoryById(id);
+            assertTrue(found.isPresent(), "Category must be retrievable after creation");
+            assertEquals("A test description", found.get().getDescription(),
+                "Description must be persisted exactly as supplied on create");
+        } finally {
+            FoodCategoryService.deleteCategory(id);
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(118)
+    void categoryDescriptionPersistsAfterUpdate() {
+        int id = FoodCategoryService.addCategory("SV_DescUpdate", "Initial desc");
+        try {
+            FoodCategoryService.updateCategory(id, "SV_DescUpdate", "Updated desc");
+            Optional<FoodCategory> found = FoodCategoryService.getCategoryById(id);
+            assertTrue(found.isPresent(), "Category must be retrievable after update");
+            assertEquals("Updated desc", found.get().getDescription(),
+                "Description must reflect the updated value");
+        } finally {
+            FoodCategoryService.deleteCategory(id);
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(119)
+    void nullOrBlankDescriptionIsAccepted() {
+        // Null description
+        int id1 = FoodCategoryService.addCategory("SV_NullDesc", null);
+        try {
+            Optional<FoodCategory> found1 = FoodCategoryService.getCategoryById(id1);
+            assertTrue(found1.isPresent());
+            assertNull(found1.get().getDescription(),
+                "null description must be stored as SQL NULL and returned as null");
+        } finally {
+            FoodCategoryService.deleteCategory(id1);
+        }
+
+        // Blank description — service normalises it to null
+        int id2 = FoodCategoryService.addCategory("SV_BlankDesc", "   ");
+        try {
+            Optional<FoodCategory> found2 = FoodCategoryService.getCategoryById(id2);
+            assertTrue(found2.isPresent());
+            assertNull(found2.get().getDescription(),
+                "blank/whitespace-only description must be stored as SQL NULL");
+        } finally {
+            FoodCategoryService.deleteCategory(id2);
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(120)
+    void descriptionOver255CharsIsCorrectlyRejected() {
+        // PASS = service correctly rejects the oversized description
+        String longDesc = "x".repeat(256);
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+            () -> FoodCategoryService.addCategory("SV_LongDesc", longDesc),
+            "CORRECTLY REJECTED: description exceeding 255 chars must throw IllegalArgumentException");
+        assertTrue(ex.getMessage().contains("255"),
+            "Exception message must mention the 255-character limit");
+        // No category must have been created
+        boolean created = FoodCategoryService.getAllCategories().stream()
+            .anyMatch(c -> "SV_LongDesc".equals(c.getCategoryName()));
+        assertFalse(created, "No category must be created when description is too long");
+    }
+
+    @Test @org.junit.jupiter.api.Order(121)
+    void duplicateCategoryAddIsRejectedCaseInsensitively() {
+        // PASS = service correctly enforces case-insensitive uniqueness
+        int id = FoodCategoryService.addCategory("SV_CaseTest");
+        try {
+            IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> FoodCategoryService.addCategory("sv_casetest"),
+                "CORRECTLY REJECTED: duplicate name differing only in case must be rejected");
+            assertTrue(ex.getMessage().contains("already exists"),
+                "Exception message must mention 'already exists'");
+        } finally {
+            FoodCategoryService.deleteCategory(id);
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(122)
+    void updatingToAnotherCategorysNameIsCorrectlyRejected() {
+        // PASS = service correctly blocks renaming to an existing category's name
+        int idA = FoodCategoryService.addCategory("SV_CatA");
+        int idB = FoodCategoryService.addCategory("SV_CatB");
+        try {
+            IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> FoodCategoryService.updateCategory(idB, "SV_CatA"),
+                "CORRECTLY REJECTED: renaming to another category's name must throw");
+            assertTrue(ex.getMessage().contains("already exists"),
+                "Exception message must mention 'already exists'");
+            // Category B must retain its original name
+            Optional<FoodCategory> b = FoodCategoryService.getCategoryById(idB);
+            assertTrue(b.isPresent() && "SV_CatB".equals(b.get().getCategoryName()),
+                "Category B must retain its original name after the rejected rename");
+        } finally {
+            FoodCategoryService.deleteCategory(idA);
+            FoodCategoryService.deleteCategory(idB);
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(123)
+    void updatingCategoryWithoutChangingNameSucceeds() {
+        // Updating a category while keeping the same name must not be blocked as a duplicate
+        int id = FoodCategoryService.addCategory("SV_SameName", "original desc");
+        try {
+            assertDoesNotThrow(
+                () -> FoodCategoryService.updateCategory(id, "SV_SameName", "updated desc"),
+                "Updating a category without changing its name must not throw");
+            Optional<FoodCategory> found = FoodCategoryService.getCategoryById(id);
+            assertTrue(found.isPresent());
+            assertEquals("updated desc", found.get().getDescription(),
+                "Description must be updated even when the name stays the same");
+        } finally {
+            FoodCategoryService.deleteCategory(id);
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(124)
+    void descriptionMigrationIsIdempotent() throws Exception {
+        // Re-running initialize() must not duplicate the migration key or alter existing data
+        DatabaseInitializer.initialize();
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT COUNT(*) FROM schema_migrations WHERE migration_key = ?")) {
+            ps.setString(1, "20260831_add_food_category_description");
+            ResultSet rs = ps.executeQuery();
+            rs.next();
+            assertEquals(1, rs.getInt(1),
+                "Description migration key must appear exactly once after repeated initialise() calls");
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(125)
+    void existingCategoriesRemainAfterMigration() throws Exception {
+        // Default seeded categories must survive the migration
+        DatabaseInitializer.initialize();
+        List<FoodCategory> cats = FoodCategoryService.getAllCategories();
+        boolean otherPresent = cats.stream()
+            .anyMatch(c -> "Other".equals(c.getCategoryName()));
+        assertTrue(otherPresent,
+            "The 'Other' fallback category must still exist after the description migration");
+        // Verify the description column is accessible (no mapping error)
+        cats.forEach(c -> assertDoesNotThrow(
+            c::getDescription,
+            "getDescription() must not throw for any seeded category"));
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
     // UTILITIES
     // ══════════════════════════════════════════════════════════════════════
 
     private static FoodItem getFoodById(int id) throws Exception {
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(
-                 "SELECT food_id, food_name, price, available, stock_quantity, image_path " +
+                 "SELECT food_id, food_name, price, available, stock_quantity, " +
+                 "       image_path, category_id " +
                  "FROM food_items WHERE food_id=?")) {
             ps.setInt(1, id);
             ResultSet rs = ps.executeQuery();
@@ -821,6 +1263,7 @@ class ServiceValidationTest {
             fi.setAvailable(rs.getBoolean("available"));
             fi.setStockQuantity(rs.getInt("stock_quantity"));
             fi.setImagePath(rs.getString("image_path"));
+            fi.setCategoryId(rs.getInt("category_id")); // 0 when NULL
             return fi;
         }
     }
@@ -870,12 +1313,35 @@ class ServiceValidationTest {
      * Order: delete customer (cascades → orders → order_items), then food item.
      * Safe to call before and after the suite.
      */
+    /**
+     * Replicates the FoodMenuFrame in-memory filter logic so it can be tested
+     * without instantiating a Swing component.
+     *
+     * @param items      source list (usually from FoodService.getAvailableFoodItems())
+     * @param nameQuery  case-insensitive substring to match against food_name; empty = any name
+     * @param categoryId positive ID to filter by; 0 or negative = all categories
+     */
+    private static List<FoodItem> filterMenu(List<FoodItem> items,
+                                             String nameQuery, int categoryId) {
+        String q = (nameQuery == null) ? "" : nameQuery.toLowerCase().trim();
+        return items.stream()
+            .filter(f -> {
+                boolean nameMatch = q.isEmpty() || f.getFoodName().toLowerCase().contains(q);
+                boolean catMatch  = categoryId <= 0 || f.getCategoryId() == categoryId;
+                return nameMatch && catMatch;
+            })
+            .collect(java.util.stream.Collectors.toList());
+    }
+
     private static void deleteTestFixtures() {
         try (Connection conn = DatabaseConnection.getConnection()) {
             conn.createStatement().execute(
                 "DELETE FROM customers WHERE username = '" + TEST_USER + "'");
+            // Delete all SV_ food items first (FK: food_items references food_categories)
             conn.createStatement().execute(
-                "DELETE FROM food_items WHERE food_name LIKE 'SV_TestFood%'");
+                "DELETE FROM food_items WHERE food_name LIKE 'SV_%'");
+            conn.createStatement().execute(
+                "DELETE FROM food_categories WHERE category_name LIKE 'SV_%'");
         } catch (Exception ignored) {
             // Fixtures did not exist — nothing to clean up
         }

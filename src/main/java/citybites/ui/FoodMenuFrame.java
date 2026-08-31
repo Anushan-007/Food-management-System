@@ -2,7 +2,9 @@ package citybites.ui;
 
 import citybites.data.DataStore;
 import citybites.model.CartItem;
+import citybites.model.FoodCategory;
 import citybites.model.FoodItem;
+import citybites.service.FoodCategoryService;
 import citybites.service.FoodService;
 import citybites.util.ImageManager;
 import java.awt.*;
@@ -26,18 +28,21 @@ public class FoodMenuFrame extends javax.swing.JFrame {
         setSize(1020, 720);
         setLocationRelativeTo(null);
         setResizable(true);
-        loadMenu(null);
+        loadCategories();
+        loadMenu(null, 0);
     }
 
-    private void loadMenu(String filter) {
+    private void loadMenu(String nameFilter, int categoryId) {
         try {
             if (allItems.isEmpty()) {
                 allItems = FoodService.getAvailableFoodItems();
             }
             displayedItems.clear();
-            String q = (filter == null || filter.isBlank()) ? "" : filter.toLowerCase();
+            String q = (nameFilter == null || nameFilter.isBlank()) ? "" : nameFilter.toLowerCase();
             for (FoodItem food : allItems) {
-                if (q.isEmpty() || food.getFoodName().toLowerCase().contains(q)) {
+                boolean nameMatch = q.isEmpty() || food.getFoodName().toLowerCase().contains(q);
+                boolean catMatch  = categoryId <= 0 || food.getCategoryId() == categoryId;
+                if (nameMatch && catMatch) {
                     displayedItems.add(food);
                 }
             }
@@ -46,6 +51,31 @@ public class FoodMenuFrame extends javax.swing.JFrame {
             AppTheme.showError(this, "Database Error",
                     "Error loading menu: " + e.getMessage());
         }
+    }
+
+    private void loadCategories() {
+        cmbCategory.removeAllItems();
+        cmbCategory.addItem(null); // "All Categories"
+        try {
+            for (FoodCategory cat : FoodCategoryService.getAllCategories()) {
+                cmbCategory.addItem(cat);
+            }
+        } catch (Exception ignored) {}
+        cmbCategory.setRenderer(new javax.swing.DefaultListCellRenderer() {
+            @Override
+            public java.awt.Component getListCellRendererComponent(
+                    javax.swing.JList<?> list, Object value, int index,
+                    boolean isSelected, boolean cellHasFocus) {
+                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+                setText(value == null ? "All Categories" : value.toString());
+                return this;
+            }
+        });
+    }
+
+    private int getSelectedCategoryId() {
+        Object sel = cmbCategory.getSelectedItem();
+        return (sel instanceof FoodCategory) ? ((FoodCategory) sel).getCategoryId() : 0;
     }
 
     private static final int MAX_COLS = 5;
@@ -199,19 +229,26 @@ public class FoodMenuFrame extends javax.swing.JFrame {
         btnSearch = AppTheme.secondaryBtn("Search");
         btnSearch.addActionListener(e -> {
             allItems.clear();   // force refresh from DB on each search
-            loadMenu(txtSearch.getText());
+            loadMenu(txtSearch.getText(), getSelectedCategoryId());
         });
         txtSearch.addActionListener(e -> {
             allItems.clear();
-            loadMenu(txtSearch.getText());
+            loadMenu(txtSearch.getText(), getSelectedCategoryId());
         });
 
         JButton clearSearchBtn = AppTheme.ghostBtn("Clear");
         clearSearchBtn.addActionListener(e -> {
             txtSearch.setText("");
+            cmbCategory.setSelectedIndex(0);
             allItems.clear();
-            loadMenu(null);
+            loadMenu(null, 0);
         });
+
+        cmbCategory = new javax.swing.JComboBox<>();
+        cmbCategory.setFont(AppTheme.FONT_BODY);
+        cmbCategory.setPreferredSize(new Dimension(170, AppTheme.BTN_H));
+        cmbCategory.addActionListener(e ->
+            loadMenu(txtSearch.getText(), getSelectedCategoryId()));
 
         JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 10));
         toolbar.setBackground(AppTheme.BG_MAIN);
@@ -219,10 +256,15 @@ public class FoodMenuFrame extends javax.swing.JFrame {
         JLabel searchLbl = new JLabel("Search:");
         searchLbl.setFont(AppTheme.FONT_BODY);
         searchLbl.setForeground(AppTheme.TEXT_PRIMARY);
+        JLabel catLbl = new JLabel("Category:");
+        catLbl.setFont(AppTheme.FONT_BODY);
+        catLbl.setForeground(AppTheme.TEXT_PRIMARY);
         toolbar.add(searchLbl);
         toolbar.add(txtSearch);
         toolbar.add(btnSearch);
         toolbar.add(clearSearchBtn);
+        toolbar.add(catLbl);
+        toolbar.add(cmbCategory);
 
         // ── Cards scroll area ────────────────────────────────────────
         cardsPanel = new JPanel();
@@ -263,11 +305,12 @@ public class FoodMenuFrame extends javax.swing.JFrame {
     }
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
-    private javax.swing.JButton    btnSearch;
-    private javax.swing.JButton    btnViewCart;
-    private javax.swing.JButton    btnBack;
-    private javax.swing.JTextField txtSearch;
-    private JPanel                 cardsPanel;
+    private javax.swing.JButton                 btnSearch;
+    private javax.swing.JButton                 btnViewCart;
+    private javax.swing.JButton                 btnBack;
+    private javax.swing.JTextField              txtSearch;
+    private javax.swing.JComboBox<FoodCategory> cmbCategory;
+    private JPanel                              cardsPanel;
     // End of variables declaration//GEN-END:variables
 
     /**
