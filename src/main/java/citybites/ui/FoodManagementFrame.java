@@ -1,5 +1,6 @@
 package citybites.ui;
 
+import citybites.model.FeaturedAssignmentResult;
 import citybites.model.FoodCategory;
 import citybites.model.FoodItem;
 import citybites.service.FoodCategoryService;
@@ -99,6 +100,24 @@ public class FoodManagementFrame extends javax.swing.JFrame {
         lblCategory.setFont(AppTheme.FONT_LABEL);
         lblCategory.setForeground(AppTheme.TEXT_PRIMARY);
 
+        lblFeaturedSlot = new javax.swing.JLabel("Featured Slot");
+        lblFeaturedSlot.setFont(AppTheme.FONT_LABEL);
+        lblFeaturedSlot.setForeground(AppTheme.TEXT_PRIMARY);
+
+        cmbFeaturedSlot = new javax.swing.JComboBox<>();
+        cmbFeaturedSlot.addItem(null);
+        for (int i = 1; i <= 4; i++) cmbFeaturedSlot.addItem(i);
+        cmbFeaturedSlot.setFont(AppTheme.FONT_BODY);
+        cmbFeaturedSlot.setRenderer(new javax.swing.DefaultListCellRenderer() {
+            @Override public java.awt.Component getListCellRendererComponent(
+                    javax.swing.JList<?> list, Object value, int idx,
+                    boolean sel, boolean focus) {
+                super.getListCellRendererComponent(list, value, idx, sel, focus);
+                setText(value == null ? "\u2014 Not Featured \u2014" : "Slot " + value);
+                return this;
+            }
+        });
+
         AppTheme.styleField(txtName);
         AppTheme.styleField(txtPrice);
         AppTheme.styleField(txtStock);
@@ -130,14 +149,16 @@ public class FoodManagementFrame extends javax.swing.JFrame {
         c.weightx = 1;
         c.insets  = new Insets(5, 0, 5, 0);
 
-        c.gridx = 0; c.gridy = 0; fields.add(lblName,     c);
-        c.gridy = 1;               fields.add(txtName,     c);
-        c.gridy = 2;               fields.add(lblPrice,    c);
-        c.gridy = 3;               fields.add(txtPrice,    c);
-        c.gridy = 4;               fields.add(lblStock,    c);
-        c.gridy = 5;               fields.add(txtStock,    c);
-        c.gridy = 6;               fields.add(lblCategory, c);
-        c.gridy = 7;               fields.add(cmbCategory, c);
+        c.gridx = 0; c.gridy = 0; fields.add(lblName,        c);
+        c.gridy = 1;               fields.add(txtName,        c);
+        c.gridy = 2;               fields.add(lblPrice,       c);
+        c.gridy = 3;               fields.add(txtPrice,       c);
+        c.gridy = 4;               fields.add(lblStock,       c);
+        c.gridy = 5;               fields.add(txtStock,       c);
+        c.gridy = 6;               fields.add(lblCategory,    c);
+        c.gridy = 7;               fields.add(cmbCategory,    c);
+        c.gridy = 8;               fields.add(lblFeaturedSlot, c);
+        c.gridy = 9;               fields.add(cmbFeaturedSlot, c);
 
         // Action buttons
         btnAdd    = AppTheme.primaryBtn("Add Item");
@@ -203,7 +224,7 @@ public class FoodManagementFrame extends javax.swing.JFrame {
         formScroll.setPreferredSize(new Dimension(280, 0));
 
         // ── Table panel (right) ──────────────────────────────────────
-        String[] columns = {"ID", "Name", "Price (Rs.)", "Stock", "Available", "Category", "Image"};
+        String[] columns = {"ID", "Name", "Price (Rs.)", "Stock", "Available", "Category", "Image", "Slot"};
         tableModel = new DefaultTableModel(columns, 0) {
             @Override public boolean isCellEditable(int r, int c2) { return false; }
         };
@@ -263,6 +284,12 @@ public class FoodManagementFrame extends javax.swing.JFrame {
         colImg.setMinWidth(100);
         colImg.setHeaderRenderer(headerRenderer(origHdr, SwingConstants.CENTER));
         colImg.setCellRenderer(new ImageCellRenderer());
+
+        // ── Slot (centre / coloured badge) ───────────────────────────────────────
+        var colSlot = tblFood.getColumnModel().getColumn(7);
+        colSlot.setMinWidth(60);
+        colSlot.setHeaderRenderer(headerRenderer(origHdr, SwingConstants.CENTER));
+        colSlot.setCellRenderer(new FeaturedSlotCellRenderer());
 
         tblFood.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) tableRowSelected();
@@ -331,7 +358,8 @@ public class FoodManagementFrame extends javax.swing.JFrame {
                     String.format("%.2f", f.getPrice()),
                     f.getStockQuantity(), f.isAvailable(),
                     (f.getCategoryName() != null ? f.getCategoryName() : "Uncategorized"),
-                    f.getImagePath()
+                    f.getImagePath(),
+                    f.getFeaturedPosition()
                 });
             }
         } catch (Exception e) {
@@ -375,13 +403,14 @@ public class FoodManagementFrame extends javax.swing.JFrame {
         if (totalWidth <= 0) totalWidth = tblFood.getWidth();
         if (totalWidth <= 0) return;
         var cols = tblFood.getColumnModel();
-        // View columns after ID removal: Name, Price, Stock, Available, Category, Image
-        cols.getColumn(0).setPreferredWidth((int) (totalWidth * 0.27)); // Name
-        cols.getColumn(1).setPreferredWidth((int) (totalWidth * 0.13)); // Price
-        cols.getColumn(2).setPreferredWidth((int) (totalWidth * 0.09)); // Stock
-        cols.getColumn(3).setPreferredWidth((int) (totalWidth * 0.14)); // Available
-        cols.getColumn(4).setPreferredWidth((int) (totalWidth * 0.18)); // Category
-        cols.getColumn(5).setPreferredWidth((int) (totalWidth * 0.19)); // Image
+        // View columns after ID removal: Name, Price, Stock, Available, Category, Image, Slot
+        cols.getColumn(0).setPreferredWidth((int) (totalWidth * 0.24)); // Name
+        cols.getColumn(1).setPreferredWidth((int) (totalWidth * 0.11)); // Price
+        cols.getColumn(2).setPreferredWidth((int) (totalWidth * 0.08)); // Stock
+        cols.getColumn(3).setPreferredWidth((int) (totalWidth * 0.12)); // Available
+        cols.getColumn(4).setPreferredWidth((int) (totalWidth * 0.16)); // Category
+        cols.getColumn(5).setPreferredWidth((int) (totalWidth * 0.17)); // Image
+        cols.getColumn(6).setPreferredWidth((int) (totalWidth * 0.12)); // Slot
     }
 
     private void filterTable(String query) {
@@ -396,7 +425,8 @@ public class FoodManagementFrame extends javax.swing.JFrame {
                         String.format("%.2f", f.getPrice()),
                         f.getStockQuantity(), f.isAvailable(),
                         (f.getCategoryName() != null ? f.getCategoryName() : "Uncategorized"),
-                        f.getImagePath()
+                        f.getImagePath(),
+                        f.getFeaturedPosition()
                     });
                 }
             }
@@ -430,14 +460,24 @@ public class FoodManagementFrame extends javax.swing.JFrame {
         selectedFoodId = foodId;
         FoodService.getFoodItemById(foodId).ifPresent(food -> {
             selectedCategoryId = food.getCategoryId();
+            boolean catFound = false;
             for (int i = 0; i < cmbCategory.getItemCount(); i++) {
                 FoodCategory cat = cmbCategory.getItemAt(i);
                 if (cat != null && cat.getCategoryId() == selectedCategoryId) {
                     cmbCategory.setSelectedIndex(i);
-                    return;
+                    catFound = true;
+                    break;
                 }
             }
-            cmbCategory.setSelectedIndex(0); // default: no category
+            if (!catFound) cmbCategory.setSelectedIndex(0);
+
+            // Restore featured slot combo from DB value
+            Integer pos = food.getFeaturedPosition();
+            if (pos != null) {
+                cmbFeaturedSlot.setSelectedItem(pos);
+            } else {
+                cmbFeaturedSlot.setSelectedIndex(0);
+            }
         });
         setEditMode();
     }
@@ -456,14 +496,30 @@ public class FoodManagementFrame extends javax.swing.JFrame {
                     "Please fill in all fields before adding.");
             return;
         }
-        // Category is mandatory — validate before importing any image
         FoodCategory selCat = (FoodCategory) cmbCategory.getSelectedItem();
         if (selCat == null || selCat.getCategoryId() <= 0) {
             AppTheme.showWarning(this, "Validation Error",
                     "Please select a category for this food item.");
             return;
         }
-        // Import image BEFORE DB insert so we can roll back the managed file on DB failure.
+
+        // Parse early so bad numeric input is rejected before the image is imported.
+        double p;
+        int    s;
+        try {
+            p = Double.parseDouble(price);
+            s = Integer.parseInt(stock);
+            if (p <= 0 || s < 0) throw new NumberFormatException();
+        } catch (NumberFormatException ex) {
+            AppTheme.showWarning(this, "Validation Error",
+                    "Price must be a positive number and Stock a non-negative integer.");
+            return;
+        }
+
+        int     catId = selCat.getCategoryId();
+        Integer slot  = getSelectedFeaturedSlot();
+
+        // Import the image.  On any subsequent failure the managed copy must be deleted.
         // Never store the raw source path — only the managed relative filename goes to MySQL.
         String managedPath = null;
         if (selectedSourceFile != null) {
@@ -475,19 +531,30 @@ public class FoodManagementFrame extends javax.swing.JFrame {
                 return;
             }
         }
+
         try {
-            double p = Double.parseDouble(price);
-            int    s = Integer.parseInt(stock);
-            if (p <= 0 || s < 0) throw new NumberFormatException();
-            int catId = selCat.getCategoryId();
-            FoodService.addFoodItem(name, p, s > 0, s, managedPath, catId);
+            // Atomic insert + optional slot assignment in one transaction.
+            // The occupancy check runs BEFORE the INSERT, so returning 0 (SLOT_OCCUPIED)
+            // means the database is completely unchanged — no orphan food row was created.
+            int newFoodId = FoodService.addFoodItemWithFeaturedPosition(
+                    name, p, s > 0, s, managedPath, catId, slot, false);
+
+            if (newFoodId == 0) { // SLOT_OCCUPIED — nothing in the DB has changed yet
+                boolean replace = AppTheme.showConfirm(this, "Slot Already in Use",
+                        "Slot " + slot + " is already assigned to another item.\nReplace it?");
+                if (!replace) {
+                    // User declined: undo the only irreversible side-effect (image copy)
+                    if (managedPath != null) ImageManager.deleteManagedImage(managedPath);
+                    return;
+                }
+                // Retry with replacement authorised — cannot return 0 (replaceOccupied=true)
+                newFoodId = FoodService.addFoodItemWithFeaturedPosition(
+                        name, p, s > 0, s, managedPath, catId, slot, true);
+            }
+
             AppTheme.showInfo(this, "Success", "\"" + name + "\" added successfully.");
             loadFoodTable();
             clearForm();
-        } catch (NumberFormatException ex) {
-            if (managedPath != null) ImageManager.deleteManagedImage(managedPath);
-            AppTheme.showWarning(this, "Validation Error",
-                    "Price must be a positive number and Stock a non-negative integer.");
         } catch (Exception ex) {
             if (managedPath != null) ImageManager.deleteManagedImage(managedPath);
             AppTheme.showError(this, "Database Error",
@@ -508,6 +575,7 @@ public class FoodManagementFrame extends javax.swing.JFrame {
             return;
         }
         int row = tblFood.convertRowIndexToModel(viewRow);
+
         String name  = txtName.getText().trim();
         String price = txtPrice.getText().trim();
         String stock = txtStock.getText().trim();
@@ -516,15 +584,42 @@ public class FoodManagementFrame extends javax.swing.JFrame {
                     "Please fill in all fields before updating.");
             return;
         }
-        // Category is mandatory — validate before importing any image
         FoodCategory updSelCat = (FoodCategory) cmbCategory.getSelectedItem();
         if (updSelCat == null || updSelCat.getCategoryId() <= 0) {
             AppTheme.showWarning(this, "Validation Error",
                     "Please select a category for this food item.");
             return;
         }
-        // If no new image was chosen, retain the existing persisted path.
-        // Only import (and eventually replace) when the user actively selected a new file.
+
+        // Parse early so bad numeric input is rejected before any mutation.
+        int    id;
+        double p;
+        int    s;
+        try {
+            id = Integer.parseInt(tableModel.getValueAt(row, 0).toString());
+            p  = Double.parseDouble(price);
+            s  = Integer.parseInt(stock);
+            if (p <= 0 || s < 0) throw new NumberFormatException();
+        } catch (NumberFormatException ex) {
+            AppTheme.showWarning(this, "Validation Error",
+                    "Price must be a positive number and Stock a non-negative integer.");
+            return;
+        }
+
+        int     catId   = updSelCat.getCategoryId();
+        Integer updSlot = getSelectedFeaturedSlot();
+
+        // Slot conflict pre-check BEFORE any mutation — read-only, no locks held.
+        // Shows the dialog here so the user sees it before the image is imported.
+        boolean replaceOccupied = false;
+        if (updSlot != null && FoodService.findFeaturedSlotOccupant(updSlot, id) > 0) {
+            boolean replace = AppTheme.showConfirm(this, "Slot Already in Use",
+                    "Slot " + updSlot + " is already assigned to another item.\nReplace it?");
+            if (!replace) return; // abort — no mutations made
+            replaceOccupied = true;
+        }
+
+        // Import new image (or retain existing); mutation begins here.
         String newManagedPath = persistedImagePath;
         if (selectedSourceFile != null) {
             try {
@@ -535,15 +630,25 @@ public class FoodManagementFrame extends javax.swing.JFrame {
                 return;
             }
         }
+
         try {
-            int    id = Integer.parseInt(tableModel.getValueAt(row, 0).toString());
-            double p  = Double.parseDouble(price);
-            int    s  = Integer.parseInt(stock);
-            if (p <= 0 || s < 0) throw new NumberFormatException();
-            int catId = updSelCat.getCategoryId();
-            FoodService.updateFoodItem(id, name, p, s > 0, s, newManagedPath, catId);
-            // Delete old managed image only after DB update succeeds and
-            // only if a genuinely new image replaced it.
+            // Single atomic transaction: field update + slot assignment together.
+            FeaturedAssignmentResult result = FoodService.updateFoodItemWithFeaturedPosition(
+                    id, name, p, s > 0, s, newManagedPath, catId, updSlot, replaceOccupied);
+
+            if (result.getStatus() == FeaturedAssignmentResult.Status.SLOT_OCCUPIED) {
+                // Race: slot was claimed between the pre-check and the transaction.
+                // No DB state was changed; undo only the image import side-effect.
+                if (selectedSourceFile != null && newManagedPath != null
+                        && !newManagedPath.equals(persistedImagePath)) {
+                    ImageManager.deleteManagedImage(newManagedPath);
+                }
+                AppTheme.showWarning(this, "Slot Taken",
+                        "Slot " + updSlot + " was claimed by another item.\nPlease try again.");
+                return;
+            }
+
+            // Success — delete the old managed image only after the DB commit succeeds.
             if (selectedSourceFile != null
                     && persistedImagePath != null
                     && !persistedImagePath.equals(newManagedPath)) {
@@ -552,13 +657,6 @@ public class FoodManagementFrame extends javax.swing.JFrame {
             AppTheme.showInfo(this, "Updated", "\"" + name + "\" updated successfully.");
             loadFoodTable();
             clearForm();
-        } catch (NumberFormatException ex) {
-            if (selectedSourceFile != null && newManagedPath != null
-                    && !newManagedPath.equals(persistedImagePath)) {
-                ImageManager.deleteManagedImage(newManagedPath);
-            }
-            AppTheme.showWarning(this, "Validation Error",
-                    "Price must be a positive number and Stock a non-negative integer.");
         } catch (Exception ex) {
             if (selectedSourceFile != null && newManagedPath != null
                     && !newManagedPath.equals(persistedImagePath)) {
@@ -648,9 +746,16 @@ public class FoodManagementFrame extends javax.swing.JFrame {
         persistedImagePath  = null;
         selectedCategoryId  = 0;
         cmbCategory.setSelectedIndex(0);
+        cmbFeaturedSlot.setSelectedIndex(0);
         lblImagePreview.setIcon(null);
         lblImagePreview.setText("No Image");
         setAddMode();
+    }
+
+    /** Returns the selected slot (1–4) or null if "Not Featured" is selected. */
+    private Integer getSelectedFeaturedSlot() {
+        Object sel = cmbFeaturedSlot.getSelectedItem();
+        return (sel instanceof Integer i) ? i : null;
     }
 
     /**
@@ -721,6 +826,25 @@ public class FoodManagementFrame extends javax.swing.JFrame {
         }
     }
 
+    /**
+     * Renders the Slot column as "Slot N" (orange) or "—" for unfeatured items.
+     */
+    private static class FeaturedSlotCellRenderer extends DefaultTableCellRenderer {
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value,
+                boolean isSelected, boolean hasFocus, int row, int column) {
+            String text = (value instanceof Integer pos) ? "Slot " + pos : "\u2014";
+            JLabel lbl = (JLabel) super.getTableCellRendererComponent(
+                    table, text, isSelected, hasFocus, row, column);
+            lbl.setHorizontalAlignment(SwingConstants.CENTER);
+            lbl.setFont(AppTheme.FONT_SMALL);
+            if (!isSelected && value instanceof Integer) {
+                lbl.setForeground(AppTheme.BRAND_ACCENT);
+            }
+            return lbl;
+        }
+    }
+
     public static void main(String[] args) {
         java.awt.EventQueue.invokeLater(() -> new FoodManagementFrame().setVisible(true));
     }
@@ -742,5 +866,7 @@ public class FoodManagementFrame extends javax.swing.JFrame {
     private javax.swing.JLabel                     lblCategory;
     private javax.swing.JLabel                     lblImagePreview;
     private javax.swing.JComboBox<FoodCategory>    cmbCategory;
+    private javax.swing.JLabel                     lblFeaturedSlot;
+    private javax.swing.JComboBox<Integer>         cmbFeaturedSlot;
     // End of variables declaration//GEN-END:variables
 }

@@ -41,16 +41,20 @@ CREATE TABLE IF NOT EXISTS customers (
 
 -- ── Food Items ───────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS food_items (
-    food_id        INT AUTO_INCREMENT PRIMARY KEY,
-    food_name      VARCHAR(200)   NOT NULL,
-    price          DECIMAL(10,2)  NOT NULL,
-    available      TINYINT(1)     NOT NULL DEFAULT 1,
-    stock_quantity INT            NOT NULL DEFAULT 0,
-    image_path     VARCHAR(500)   DEFAULT NULL,
-    category_id    INT            NOT NULL,
-    created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    food_id           INT AUTO_INCREMENT PRIMARY KEY,
+    food_name         VARCHAR(200)   NOT NULL,
+    price             DECIMAL(10,2)  NOT NULL,
+    available         TINYINT(1)     NOT NULL DEFAULT 1,
+    stock_quantity    INT            NOT NULL DEFAULT 0,
+    image_path        VARCHAR(500)   DEFAULT NULL,
+    featured_position TINYINT        NULL,
+    category_id       INT            NOT NULL,
+    created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_food_items_cat FOREIGN KEY (category_id)
-        REFERENCES food_categories(category_id) ON DELETE RESTRICT
+        REFERENCES food_categories(category_id) ON DELETE RESTRICT,
+    UNIQUE KEY uk_food_featured_pos (featured_position),
+    CONSTRAINT chk_featured_position CHECK (featured_position IS NULL OR
+        (featured_position BETWEEN 1 AND 4))
 );
 
 -- ── Orders ───────────────────────────────────────────────────

@@ -5,6 +5,7 @@ import citybites.config.DatabaseInitializer;
 import citybites.data.DataStore;
 import citybites.model.CartItem;
 import citybites.model.Customer;
+import citybites.model.FeaturedAssignmentResult;
 import citybites.model.FoodCategory;
 import citybites.model.FoodItem;
 import citybites.model.Order;
@@ -50,6 +51,7 @@ class ServiceValidationTest {
 
     // ── Isolated test fixtures ─────────────────────────────────────────────
     static int      testFoodId   = -1;
+    static int      testFeat2Id  = -1;   // secondary food for featured-slot ordering/conflict tests
     static int      testOrderId  = -1;   // set in @Order(20), consumed by @Order(30-33)
     static Customer testCustomer = null;
 
@@ -2529,5 +2531,366 @@ class ServiceValidationTest {
         assertNull(caught.get(),
                 "DatePicker veto-after-construction must not throw: "
                 + (caught.get() != null ? caught.get().getMessage() : ""));
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // FEATURED FOODS — @Order(264-270)
+    // ══════════════════════════════════════════════════════════════════════
+
+    @Test @org.junit.jupiter.api.Order(264)
+    void featuredFoods_migrationColumnExistsInFoodItems() throws Exception {
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                "SELECT IS_NULLABLE FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() " +
+                "AND TABLE_NAME = 'food_items' " +
+                "AND COLUMN_NAME = 'featured_position'")) {
+            try (ResultSet rs = ps.executeQuery()) {
+                assertTrue(rs.next(),
+                    "featured_position column must exist in food_items after migration");
+                assertEquals("YES", rs.getString("IS_NULLABLE"),
+                    "featured_position must be nullable (NULL = not featured)");
+            }
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(265)
+    void featuredFoods_setSlot_foodAppearsInFeaturedList() {
+        // Ensure testFoodId has no featured slot initially (clear any state from prior runs)
+        FoodService.setFeaturedPosition(testFoodId, null);
+
+        List<FoodItem> before = FoodService.getFeaturedFoodItems();
+        boolean presentBefore = before.stream().anyMatch(f -> f.getFoodId() == testFoodId);
+        assertFalse(presentBefore,
+            "testFoodId must not appear in featured list before being assigned a slot");
+
+        FoodService.setFeaturedPosition(testFoodId, 1);
+
+        List<FoodItem> after = FoodService.getFeaturedFoodItems();
+        assertTrue(after.stream().anyMatch(f -> f.getFoodId() == testFoodId),
+            "testFoodId must appear in featured list after being assigned slot 1");
+    }
+
+    @Test @org.junit.jupiter.api.Order(266)
+    void featuredFoods_featuredFoodsReturnedInSlotOrder() {
+        // testFoodId is at slot 1 from @Order(265)
+        // Create a second food at slot 2 and verify the list is ordered slot 1 → slot 2
+        testFeat2Id = FoodService.addFoodItem("SV_FeatTest2", 99.0, true, 10, null);
+        assertTrue(testFeat2Id > 0, "SV_FeatTest2 fixture must be created");
+
+        FoodService.setFeaturedPosition(testFeat2Id, 2);
+
+        List<FoodItem> featured = FoodService.getFeaturedFoodItems();
+        assertTrue(featured.size() >= 2,
+            "At least 2 featured items must be present");
+
+        // Find indices of testFoodId (slot 1) and testFeat2Id (slot 2)
+        int idx1 = -1, idx2 = -1;
+        for (int i = 0; i < featured.size(); i++) {
+            if (featured.get(i).getFoodId() == testFoodId)  idx1 = i;
+            if (featured.get(i).getFoodId() == testFeat2Id) idx2 = i;
+        }
+        assertTrue(idx1 >= 0, "testFoodId (slot 1) must be in featured list");
+        assertTrue(idx2 >= 0, "testFeat2Id (slot 2) must be in featured list");
+        assertTrue(idx1 < idx2,
+            "Slot 1 food must appear before Slot 2 food in the featured list");
+    }
+
+    @Test @org.junit.jupiter.api.Order(267)
+    void featuredFoods_slotConflict_displacesPreviousFood() {
+        // testFoodId is at slot 1; assigning testFeat2Id to slot 1 must displace testFoodId
+        FoodService.setFeaturedPosition(testFeat2Id, 1);
+
+        List<FoodItem> featured = FoodService.getFeaturedFoodItems();
+        boolean testFood1Present = featured.stream().anyMatch(f -> f.getFoodId() == testFoodId);
+        boolean testFeat2Present = featured.stream().anyMatch(f -> f.getFoodId() == testFeat2Id);
+
+        assertFalse(testFood1Present,
+            "testFoodId must be displaced from slot 1 when testFeat2Id takes it");
+        assertTrue(testFeat2Present,
+            "testFeat2Id must now hold slot 1 after the conflict displacement");
+    }
+
+    @Test @org.junit.jupiter.api.Order(268)
+    void featuredFoods_clearSlot_removesFromFeaturedList() {
+        // Assign testFoodId to slot 3, then clear it
+        FoodService.setFeaturedPosition(testFoodId, 3);
+        List<FoodItem> afterAssign = FoodService.getFeaturedFoodItems();
+        assertTrue(afterAssign.stream().anyMatch(f -> f.getFoodId() == testFoodId),
+            "testFoodId must appear in featured list after being assigned slot 3");
+
+        FoodService.setFeaturedPosition(testFoodId, null);
+        List<FoodItem> afterClear = FoodService.getFeaturedFoodItems();
+        assertFalse(afterClear.stream().anyMatch(f -> f.getFoodId() == testFoodId),
+            "testFoodId must NOT appear in featured list after its slot is cleared");
+    }
+
+    @Test @org.junit.jupiter.api.Order(269)
+    void featuredFoods_unavailableFeaturedFood_excludedFromList() throws Exception {
+        // Assign testFoodId to slot 2
+        FoodService.setFeaturedPosition(testFoodId, 2);
+
+        // Mark testFoodId as unavailable via direct SQL (bypasses service stock logic)
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                "UPDATE food_items SET available = 0 WHERE food_id = ?")) {
+            ps.setInt(1, testFoodId);
+            ps.executeUpdate();
+        }
+
+        List<FoodItem> featured = FoodService.getFeaturedFoodItems();
+        assertFalse(featured.stream().anyMatch(f -> f.getFoodId() == testFoodId),
+            "Unavailable food must not appear in the featured list even if it has a slot");
+
+        // Restore availability so subsequent teardown succeeds
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                "UPDATE food_items SET available = 1 WHERE food_id = ?")) {
+            ps.setInt(1, testFoodId);
+            ps.executeUpdate();
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(270)
+    void featuredFoods_invalidPosition_isRejectedCleanly() {
+        assertThrows(IllegalArgumentException.class,
+            () -> FoodService.setFeaturedPosition(testFoodId, 0),
+            "Position 0 must be rejected");
+        assertThrows(IllegalArgumentException.class,
+            () -> FoodService.setFeaturedPosition(testFoodId, 5),
+            "Position 5 must be rejected");
+        assertThrows(IllegalArgumentException.class,
+            () -> FoodService.setFeaturedPosition(testFoodId, -1),
+            "Negative position must be rejected");
+
+        // Boundary values that must NOT throw
+        assertDoesNotThrow(
+            () -> FoodService.setFeaturedPosition(testFoodId, null),
+            "null (clear slot) must not throw");
+        assertDoesNotThrow(
+            () -> FoodService.setFeaturedPosition(testFoodId, 1),
+            "Position 1 must be valid");
+        assertDoesNotThrow(
+            () -> FoodService.setFeaturedPosition(testFoodId, 4),
+            "Position 4 must be valid");
+    }
+
+    // ── @Order(271-278): updateWithFeaturedPosition atomicity tests ─────────
+
+    @Test @org.junit.jupiter.api.Order(271)
+    void updateAtomic_fieldsAndSlot_changedTogether() {
+        // Clear any prior slot, then put testFoodId at slot 1
+        FoodService.setFeaturedPosition(testFoodId, null);
+        FoodService.setFeaturedPosition(testFoodId, 1);
+
+        int catId = citybites.service.FoodCategoryService.getOtherCategoryId();
+        String updatedName = "SV_TestFood_Updated271";
+
+        // Atomic update: rename + move slot 1 → 3
+        FeaturedAssignmentResult result = FoodService.updateFoodItemWithFeaturedPosition(
+                testFoodId, updatedName, 12.50, true, 10, null, catId, 3, false);
+
+        assertTrue(result.isSuccess(), "Update must succeed (slot 3 is free)");
+
+        FoodService.getFoodItemById(testFoodId).ifPresentOrElse(food -> {
+            assertEquals(updatedName, food.getFoodName(),
+                    "Food name must reflect the atomic update");
+            assertEquals(Integer.valueOf(3), food.getFeaturedPosition(),
+                    "Featured slot must be 3 after the atomic update");
+        }, () -> fail("testFoodId must still exist after update"));
+    }
+
+    @Test @org.junit.jupiter.api.Order(272)
+    void updateAtomic_occupiedSlot_noReplace_nothingChanges() {
+        // testFoodId at slot 3 (from @Order(271)); put testFeat2Id at slot 2
+        FoodService.setFeaturedPosition(testFeat2Id, 2);
+
+        int catId = citybites.service.FoodCategoryService.getOtherCategoryId();
+        String originalName = FoodService.getFoodItemById(testFoodId)
+                .map(FoodItem::getFoodName)
+                .orElseThrow(() -> new AssertionError("testFoodId not found"));
+
+        // Try to move testFoodId into slot 2 (occupied by testFeat2Id), replaceOccupied=false
+        FeaturedAssignmentResult result = FoodService.updateFoodItemWithFeaturedPosition(
+                testFoodId, "SV_AtomicShouldNotApply", 99.99, true, 99, null,
+                catId, 2, false);
+
+        assertEquals(FeaturedAssignmentResult.Status.SLOT_OCCUPIED, result.getStatus(),
+                "Must return SLOT_OCCUPIED when target slot is taken and replaceOccupied=false");
+
+        // Verify no DB state was changed for either food
+        FoodService.getFoodItemById(testFoodId).ifPresentOrElse(food -> {
+            assertEquals(originalName, food.getFoodName(),
+                    "Food name must NOT change when update returns SLOT_OCCUPIED");
+            assertEquals(Integer.valueOf(3), food.getFeaturedPosition(),
+                    "Featured slot must remain 3 when update returns SLOT_OCCUPIED");
+        }, () -> fail("testFoodId must still exist"));
+
+        FoodService.getFoodItemById(testFeat2Id).ifPresentOrElse(food ->
+            assertEquals(Integer.valueOf(2), food.getFeaturedPosition(),
+                    "testFeat2Id must still hold slot 2 after the refused update"),
+            () -> fail("testFeat2Id must still exist"));
+    }
+
+    @Test @org.junit.jupiter.api.Order(273)
+    void updateAtomic_clearSlot_atomicWithFieldUpdate() {
+        // testFoodId at slot 3, testFeat2Id at slot 2
+        int catId = citybites.service.FoodCategoryService.getOtherCategoryId();
+        String newName = "SV_TestFood_Cleared273";
+
+        // Update with targetPosition=null → clear slot and rename atomically
+        FeaturedAssignmentResult result = FoodService.updateFoodItemWithFeaturedPosition(
+                testFoodId, newName, 10.00, true, 5, null, catId, null, false);
+
+        assertEquals(FeaturedAssignmentResult.Status.CLEARED, result.getStatus(),
+                "Clearing slot must return CLEARED");
+
+        FoodService.getFoodItemById(testFoodId).ifPresentOrElse(food -> {
+            assertEquals(newName, food.getFoodName(), "Name must be updated");
+            assertNull(food.getFeaturedPosition(), "Featured slot must be null after clearing");
+        }, () -> fail("testFoodId must still exist"));
+    }
+
+    @Test @org.junit.jupiter.api.Order(274)
+    void updateAtomic_sameSlot_noDisplacementOccurs() {
+        // Assign testFoodId to slot 1, testFeat2Id to slot 2
+        FoodService.setFeaturedPosition(testFoodId, 1);
+        FoodService.setFeaturedPosition(testFeat2Id, 2);
+
+        int catId = citybites.service.FoodCategoryService.getOtherCategoryId();
+        String newName = "SV_TestFood_SameSlot274";
+
+        // Update testFoodId with same slot (1 → 1); testFeat2Id must not be displaced
+        FeaturedAssignmentResult result = FoodService.updateFoodItemWithFeaturedPosition(
+                testFoodId, newName, 11.00, true, 7, null, catId, 1, false);
+
+        assertTrue(result.isSuccess(), "Update to same slot must succeed");
+
+        FoodService.getFoodItemById(testFoodId).ifPresentOrElse(food -> {
+            assertEquals(newName, food.getFoodName(), "Name must be updated");
+            assertEquals(Integer.valueOf(1), food.getFeaturedPosition(),
+                    "testFoodId must still be at slot 1");
+        }, () -> fail("testFoodId must still exist"));
+
+        FoodService.getFoodItemById(testFeat2Id).ifPresentOrElse(food ->
+            assertEquals(Integer.valueOf(2), food.getFeaturedPosition(),
+                    "testFeat2Id must remain at slot 2 — no displacement should occur"),
+            () -> fail("testFeat2Id must still exist"));
+    }
+
+    @Test @org.junit.jupiter.api.Order(275)
+    void updateAtomic_displacement_atomicWithFieldUpdate() {
+        // testFoodId at slot 1, testFeat2Id at slot 2 (from @Order(274))
+        // Move testFoodId into slot 2 (displacing testFeat2Id) atomically with a rename
+        int catId = citybites.service.FoodCategoryService.getOtherCategoryId();
+        String newName = "SV_TestFood_Displaced275";
+
+        FeaturedAssignmentResult result = FoodService.updateFoodItemWithFeaturedPosition(
+                testFoodId, newName, 14.00, true, 8, null, catId, 2, true);
+
+        assertTrue(result.isSuccess(), "Update with displacement must succeed");
+        assertEquals(Integer.valueOf(testFeat2Id), result.getRelatedFoodId(),
+                "relatedFoodId must identify the displaced food (testFeat2Id)");
+
+        FoodService.getFoodItemById(testFoodId).ifPresentOrElse(food -> {
+            assertEquals(newName, food.getFoodName(), "Name must be updated");
+            assertEquals(Integer.valueOf(2), food.getFeaturedPosition(),
+                    "testFoodId must now hold slot 2");
+        }, () -> fail("testFoodId must still exist"));
+
+        FoodService.getFoodItemById(testFeat2Id).ifPresentOrElse(food ->
+            assertNull(food.getFeaturedPosition(),
+                    "testFeat2Id must be displaced (featured_position set to null)"),
+            () -> fail("testFeat2Id must still exist"));
+    }
+
+    @Test @org.junit.jupiter.api.Order(276)
+    void updateAtomic_notFoundFood_preservesSlotOwners() {
+        // testFoodId at slot 2 from prior test; verify that an attempt to update a
+        // non-existent food throws RuntimeException and leaves slot 2 unaffected.
+        int catId = citybites.service.FoodCategoryService.getOtherCategoryId();
+
+        assertThrows(RuntimeException.class,
+                () -> FoodService.updateFoodItemWithFeaturedPosition(
+                        Integer.MAX_VALUE, "Ghost", 1.00, true, 1, null, catId, 2, true),
+                "Updating a non-existent food must throw RuntimeException");
+
+        // testFoodId must still hold slot 2 (rolled back, no data changed)
+        FoodService.getFoodItemById(testFoodId).ifPresentOrElse(food ->
+            assertEquals(Integer.valueOf(2), food.getFeaturedPosition(),
+                    "testFoodId slot must be unaffected by the failed update of a ghost food"),
+            () -> fail("testFoodId must still exist"));
+    }
+
+    @Test @org.junit.jupiter.api.Order(277)
+    void updateAtomic_imagePathInDB_unchangedOnRollback() throws Exception {
+        // Arrange: testFeat2Id at slot 1, testFoodId at slot 2
+        FoodService.setFeaturedPosition(testFeat2Id, 1);
+
+        // Capture current image_path of testFoodId directly from DB
+        String originalImagePath;
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT image_path FROM food_items WHERE food_id = ?")) {
+            ps.setInt(1, testFoodId);
+            try (ResultSet rs = ps.executeQuery()) {
+                assertTrue(rs.next(), "testFoodId must exist in DB");
+                originalImagePath = rs.getString("image_path");
+            }
+        }
+
+        // Attempt update targeting slot 1 (occupied by testFeat2Id) with a new image_path,
+        // replaceOccupied=false → must return SLOT_OCCUPIED and leave DB unchanged.
+        int catId = citybites.service.FoodCategoryService.getOtherCategoryId();
+        FeaturedAssignmentResult result = FoodService.updateFoodItemWithFeaturedPosition(
+                testFoodId, "SV_ShouldNotChange", 77.77, true, 77,
+                "fake/rollback_test.jpg", catId, 1, false);
+
+        assertEquals(FeaturedAssignmentResult.Status.SLOT_OCCUPIED, result.getStatus(),
+                "Must return SLOT_OCCUPIED");
+
+        // Verify the image_path in the DB is still the original value (transaction rolled back)
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT image_path FROM food_items WHERE food_id = ?")) {
+            ps.setInt(1, testFoodId);
+            try (ResultSet rs = ps.executeQuery()) {
+                assertTrue(rs.next(), "testFoodId must still exist");
+                assertEquals(originalImagePath, rs.getString("image_path"),
+                        "image_path must be unchanged after a rolled-back update");
+            }
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(278)
+    void featuredFoods_uniqueIndex_and_checkConstraint_exist() throws Exception {
+        // Verify UNIQUE KEY uk_food_featured_pos exists on food_items
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT COUNT(*) FROM information_schema.STATISTICS " +
+                 "WHERE TABLE_SCHEMA = DATABASE() " +
+                 "AND TABLE_NAME = 'food_items' " +
+                 "AND INDEX_NAME = 'uk_food_featured_pos'")) {
+            try (ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                assertTrue(rs.getInt(1) > 0,
+                    "UNIQUE KEY uk_food_featured_pos must exist on food_items");
+            }
+        }
+
+        // Verify CHECK constraint chk_featured_position exists on food_items
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS " +
+                 "WHERE TABLE_SCHEMA = DATABASE() " +
+                 "AND TABLE_NAME = 'food_items' " +
+                 "AND CONSTRAINT_NAME = 'chk_featured_position' " +
+                 "AND CONSTRAINT_TYPE = 'CHECK'")) {
+            try (ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                assertTrue(rs.getInt(1) > 0,
+                    "CHECK constraint chk_featured_position must exist on food_items");
+            }
+        }
     }
 }

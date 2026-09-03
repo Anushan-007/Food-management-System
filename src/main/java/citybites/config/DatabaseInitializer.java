@@ -49,6 +49,14 @@ public class DatabaseInitializer {
     private static final String MIG_CUSTOMER_PROFILE_COLUMNS =
             "20260831_customer_profile_columns";
 
+    /** Migration key for adding featured_position to food_items. */
+    private static final String MIG_FEATURED_POSITION =
+            "20260831_add_featured_position_to_food_items";
+
+    /** Migration key for adding the CHECK constraint on featured_position (range 1–4). */
+    private static final String MIG_FEATURED_POSITION_CHECK =
+            "20260901_featured_position_check_constraint";
+
     private DatabaseInitializer() {}
 
     public static void initialize() {
@@ -170,6 +178,8 @@ public class DatabaseInitializer {
         migrationAddCategoryDescription(conn);
         migrationOrdersCustomerFkRestrict(conn);
         migrationAddCustomerProfileColumns(conn);
+        migrationAddFeaturedPosition(conn);
+        migrationAddFeaturedPositionCheck(conn);
     }
 
     /** Migration 1: Add stock_quantity column if missing (pre-v1 databases). */
@@ -764,6 +774,103 @@ public class DatabaseInitializer {
         logger.info(String.format(
             "Migration '%s' applied: %d column(s) added to customers.",
             MIG_CUSTOMER_PROFILE_COLUMNS, added));
+    }
+
+    /**
+     * Migration 10 (ONE-TIME): Adds {@code featured_position TINYINT NULL} to
+     * {@code food_items} and a UNIQUE KEY so at most one food can occupy each slot (1–4).
+     *
+     * <p>Existing rows retain {@code NULL} (not featured). No data is modified.
+     */
+    private static void migrationAddFeaturedPosition(Connection conn) throws SQLException {
+        // Guard: already applied?
+        try (PreparedStatement check = conn.prepareStatement(
+                "SELECT COUNT(*) FROM schema_migrations WHERE migration_key = ?")) {
+            check.setString(1, MIG_FEATURED_POSITION);
+            ResultSet rs = check.executeQuery();
+            rs.next();
+            if (rs.getInt(1) > 0) return;
+        }
+
+        // Safety: check column existence in case DB was manually altered
+        String colCheck =
+            "SELECT COUNT(*) FROM information_schema.COLUMNS " +
+            "WHERE TABLE_SCHEMA = DATABASE() " +
+            "AND TABLE_NAME = 'food_items' " +
+            "AND COLUMN_NAME = 'featured_position'";
+        try (PreparedStatement ps = conn.prepareStatement(colCheck);
+             ResultSet rs = ps.executeQuery()) {
+            rs.next();
+            if (rs.getInt(1) == 0) {
+                conn.createStatement().execute(
+                    "ALTER TABLE food_items " +
+                    "ADD COLUMN featured_position TINYINT NULL AFTER image_path");
+                conn.createStatement().execute(
+                    "ALTER TABLE food_items " +
+                    "ADD UNIQUE KEY uk_food_featured_pos (featured_position)");
+                logger.info("Migration applied: featured_position column added to food_items.");
+            } else {
+                logger.info("Migration '" + MIG_FEATURED_POSITION +
+                    "': featured_position column already exists — DDL skipped.");
+            }
+        }
+
+        // Record migration key
+        try (PreparedStatement ins = conn.prepareStatement(
+                "INSERT INTO schema_migrations (migration_key) VALUES (?)")) {
+            ins.setString(1, MIG_FEATURED_POSITION);
+            ins.executeUpdate();
+        }
+    }
+
+    /**
+     * Migration 11 (ONE-TIME): Adds a CHECK constraint to {@code food_items} ensuring
+     * that {@code featured_position} is either NULL or in the range 1–4.
+     *
+     * <p>The DDL is skipped if the constraint already appears in
+     * {@code information_schema.TABLE_CONSTRAINTS} (i.e., was added manually or by a
+     * previous migration attempt).
+     */
+    private static void migrationAddFeaturedPositionCheck(Connection conn) throws SQLException {
+        // Guard: already applied?
+        try (PreparedStatement check = conn.prepareStatement(
+                "SELECT COUNT(*) FROM schema_migrations WHERE migration_key = ?")) {
+            check.setString(1, MIG_FEATURED_POSITION_CHECK);
+            ResultSet rs = check.executeQuery();
+            rs.next();
+            if (rs.getInt(1) > 0) return;
+        }
+
+        // Safety: check constraint existence before applying
+        String constraintCheck =
+            "SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS " +
+            "WHERE TABLE_SCHEMA = DATABASE() " +
+            "AND TABLE_NAME = 'food_items' " +
+            "AND CONSTRAINT_NAME = 'chk_featured_position' " +
+            "AND CONSTRAINT_TYPE = 'CHECK'";
+        try (PreparedStatement ps = conn.prepareStatement(constraintCheck);
+             ResultSet rs = ps.executeQuery()) {
+            rs.next();
+            if (rs.getInt(1) == 0) {
+                conn.createStatement().execute(
+                    "ALTER TABLE food_items " +
+                    "ADD CONSTRAINT chk_featured_position " +
+                    "CHECK (featured_position IS NULL OR " +
+                    "       (featured_position BETWEEN 1 AND 4))");
+                logger.info("Migration applied: CHECK constraint chk_featured_position " +
+                            "added to food_items.");
+            } else {
+                logger.info("Migration '" + MIG_FEATURED_POSITION_CHECK +
+                    "': constraint already exists — DDL skipped.");
+            }
+        }
+
+        // Record migration key
+        try (PreparedStatement ins = conn.prepareStatement(
+                "INSERT INTO schema_migrations (migration_key) VALUES (?)")) {
+            ins.setString(1, MIG_FEATURED_POSITION_CHECK);
+            ins.executeUpdate();
+        }
     }
 
     // ── Seed Data ────────────────────────────────────────────────────────

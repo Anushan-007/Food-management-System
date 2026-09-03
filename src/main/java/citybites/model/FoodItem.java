@@ -10,6 +10,7 @@ public class FoodItem {
     private String  imagePath;
     private int     categoryId;
     private String  categoryName;
+    private Integer featuredPosition;  // null = not featured; 1–4 = dashboard slot
 
     public FoodItem() {}
 
@@ -36,6 +37,8 @@ public class FoodItem {
     public void    setCategoryId(int v)      { categoryId = v;       }
     public String  getCategoryName()         { return categoryName;  }
     public void    setCategoryName(String v) { categoryName = v;     }
+    public Integer getFeaturedPosition()         { return featuredPosition;  }
+    public void    setFeaturedPosition(Integer v){ featuredPosition = v;     }
 
     @Override
     public String toString() {

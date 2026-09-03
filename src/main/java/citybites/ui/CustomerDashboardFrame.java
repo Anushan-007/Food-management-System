@@ -211,19 +211,18 @@ public class CustomerDashboardFrame extends javax.swing.JFrame {
         cardsRow.setBackground(AppTheme.BG_MAIN);
 
         try {
-            List<FoodItem> items = FoodService.getAvailableFoodItems();
-            int shown = Math.min(4, items.size());
-            for (int i = 0; i < shown; i++) {
-                cardsRow.add(buildMiniCard(items.get(i)));
+            List<FoodItem> items = FoodService.getFeaturedFoodItems();
+            for (FoodItem food : items) {
+                cardsRow.add(buildMiniCard(food));
             }
             if (items.isEmpty()) {
-                JLabel empty = new JLabel("No items available right now.");
+                JLabel empty = new JLabel("No featured items have been configured.");
                 empty.setFont(AppTheme.FONT_BODY);
                 empty.setForeground(AppTheme.TEXT_MUTED);
                 cardsRow.add(empty);
             }
         } catch (Exception e) {
-            logger.warning("Could not load available items: " + e.getMessage());
+            logger.warning("Could not load featured items: " + e.getMessage());
         }
 
         section.add(titleBar, BorderLayout.NORTH);
