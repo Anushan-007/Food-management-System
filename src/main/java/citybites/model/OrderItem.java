@@ -10,11 +10,14 @@ package citybites.model;
  */
 public class OrderItem {
 
+    /** order_items.item_id (PK). 0 for cart/new items that have not yet been persisted. */
+    private int itemId;
     private int foodId;
     private String foodName;
     private double unitPrice;
     private int quantity;
 
+    /** Existing constructor — itemId defaults to 0 (used for new/cart items). */
     public OrderItem(
             int foodId,
             String foodName,
@@ -26,6 +29,9 @@ public class OrderItem {
         this.unitPrice = unitPrice;
         this.quantity = quantity;
     }
+
+    public int getItemId()            { return itemId; }
+    public void setItemId(int itemId) { this.itemId = itemId; }
 
     public int getFoodId() {
         return foodId;

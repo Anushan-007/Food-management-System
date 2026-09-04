@@ -13,6 +13,13 @@ import java.util.ArrayList;
  */
 public class Order {
 
+    // ── Canonical status constants ────────────────────────────────────────────
+    public static final String STATUS_PENDING   = "Pending";
+    public static final String STATUS_PREPARING = "Preparing";
+    public static final String STATUS_READY     = "Ready";
+    public static final String STATUS_COMPLETED = "Completed";
+    public static final String STATUS_CANCELLED = "Cancelled";
+
     private int orderId;
     private Customer customer;
     private LocalDateTime orderDate;

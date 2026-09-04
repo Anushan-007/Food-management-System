@@ -57,6 +57,10 @@ public class DatabaseInitializer {
     private static final String MIG_FEATURED_POSITION_CHECK =
             "20260901_featured_position_check_constraint";
 
+    /** Migration key for creating the food_ratings table. */
+    private static final String MIG_FOOD_RATINGS_TABLE =
+            "20260903_add_food_ratings_table";
+
     private DatabaseInitializer() {}
 
     public static void initialize() {
@@ -156,6 +160,21 @@ public class DatabaseInitializer {
                 )
                 """);
 
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS food_ratings (
+                    rating_id     INT AUTO_INCREMENT PRIMARY KEY,
+                    order_item_id INT NOT NULL,
+                    rating        TINYINT NOT NULL,
+                    review_text   VARCHAR(500) NULL,
+                    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    UNIQUE KEY uk_food_rating_order_item (order_item_id),
+                    CONSTRAINT chk_rating_value CHECK (rating BETWEEN 1 AND 5),
+                    CONSTRAINT fk_food_rating_order_item FOREIGN KEY (order_item_id)
+                        REFERENCES order_items(item_id) ON DELETE CASCADE
+                )
+                """);
+
             // Tracks which one-time data migrations have been applied.
             stmt.execute("""
                 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -180,6 +199,7 @@ public class DatabaseInitializer {
         migrationAddCustomerProfileColumns(conn);
         migrationAddFeaturedPosition(conn);
         migrationAddFeaturedPositionCheck(conn);
+        migrationAddFoodRatingsTable(conn);
     }
 
     /** Migration 1: Add stock_quantity column if missing (pre-v1 databases). */
@@ -869,6 +889,69 @@ public class DatabaseInitializer {
         try (PreparedStatement ins = conn.prepareStatement(
                 "INSERT INTO schema_migrations (migration_key) VALUES (?)")) {
             ins.setString(1, MIG_FEATURED_POSITION_CHECK);
+            ins.executeUpdate();
+        }
+    }
+
+    /**
+     * Migration 12 (ONE-TIME): Creates the {@code food_ratings} table for per-order-item
+     * customer ratings and optional text reviews.
+     *
+     * <p>The table uses {@code ON DELETE CASCADE} on the {@code order_item_id} FK so that
+     * ratings are automatically removed when their parent order item is deleted (which itself
+     * cascades from {@code orders ON DELETE CASCADE}). This is consistent with the existing
+     * order-item deletion policy and does not change any pre-existing behaviour.
+     *
+     * <p>Idempotency is doubly guarded:
+     * <ul>
+     *   <li>The migration key in {@code schema_migrations} prevents re-execution.</li>
+     *   <li>{@code information_schema.TABLES} prevents a duplicate CREATE even if the key
+     *       was cleared manually.</li>
+     * </ul>
+     */
+    private static void migrationAddFoodRatingsTable(Connection conn) throws SQLException {
+        // Guard: already applied?
+        try (PreparedStatement check = conn.prepareStatement(
+                "SELECT COUNT(*) FROM schema_migrations WHERE migration_key = ?")) {
+            check.setString(1, MIG_FOOD_RATINGS_TABLE);
+            ResultSet rs = check.executeQuery();
+            rs.next();
+            if (rs.getInt(1) > 0) return;
+        }
+
+        // Safety: check table existence (handles fresh-install DDL that already has it)
+        String tableCheck =
+            "SELECT COUNT(*) FROM information_schema.TABLES " +
+            "WHERE TABLE_SCHEMA = DATABASE() " +
+            "AND TABLE_NAME = 'food_ratings'";
+        try (PreparedStatement ps = conn.prepareStatement(tableCheck);
+             ResultSet rs = ps.executeQuery()) {
+            rs.next();
+            if (rs.getInt(1) == 0) {
+                conn.createStatement().execute(
+                    "CREATE TABLE food_ratings (" +
+                    "    rating_id     INT AUTO_INCREMENT PRIMARY KEY, " +
+                    "    order_item_id INT NOT NULL, " +
+                    "    rating        TINYINT NOT NULL, " +
+                    "    review_text   VARCHAR(500) NULL, " +
+                    "    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
+                    "    updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, " +
+                    "    UNIQUE KEY uk_food_rating_order_item (order_item_id), " +
+                    "    CONSTRAINT chk_rating_value CHECK (rating BETWEEN 1 AND 5), " +
+                    "    CONSTRAINT fk_food_rating_order_item FOREIGN KEY (order_item_id) " +
+                    "        REFERENCES order_items(item_id) ON DELETE CASCADE" +
+                    ")");
+                logger.info("Migration applied: food_ratings table created.");
+            } else {
+                logger.info("Migration '" + MIG_FOOD_RATINGS_TABLE +
+                    "': food_ratings table already exists — DDL skipped.");
+            }
+        }
+
+        // Record migration key
+        try (PreparedStatement ins = conn.prepareStatement(
+                "INSERT INTO schema_migrations (migration_key) VALUES (?)")) {
+            ins.setString(1, MIG_FOOD_RATINGS_TABLE);
             ins.executeUpdate();
         }
     }

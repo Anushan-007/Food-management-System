@@ -135,18 +135,20 @@ public class OrderDAOImpl implements OrderDAO {
     @Override
     public List<OrderItem> findItemsByOrderId(int orderId) {
         List<OrderItem> items = new ArrayList<>();
-        String sql = "SELECT food_id, food_name, unit_price, quantity " +
+        String sql = "SELECT item_id, food_id, food_name, unit_price, quantity " +
                      "FROM order_items WHERE order_id = ?";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, orderId);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    items.add(new OrderItem(
+                    OrderItem oi = new OrderItem(
                             rs.getInt("food_id"),
                             rs.getString("food_name"),
                             rs.getDouble("unit_price"),
-                            rs.getInt("quantity")));
+                            rs.getInt("quantity"));
+                    oi.setItemId(rs.getInt("item_id"));
+                    items.add(oi);
                 }
             }
         } catch (SQLException e) {

@@ -296,6 +296,107 @@ class ServiceValidationTest {
     }
 
     // ══════════════════════════════════════════════════════════════════════
+    // ORDER STATUS TRANSITION VALIDATION (negative + helper tests)
+    // ══════════════════════════════════════════════════════════════════════
+
+    @Test @org.junit.jupiter.api.Order(34)
+    void statusTransition_invalidName_isRejected() throws Exception {
+        // "Processing" is a legacy/wrong name — must be rejected; DB status must not change.
+        int[] data = insertDirectOrder(testCustomer.getCustomerId(), "Pending");
+        int tmpId = data[0];
+        try {
+            assertThrows(RuntimeException.class,
+                () -> OrderService.updateOrderStatus(tmpId, "Processing"),
+                "Transition to 'Processing' (invalid name) must be rejected");
+            assertEquals("Pending", getOrderStatus(tmpId),
+                "Status must remain Pending after the rejected transition");
+        } finally {
+            try (Connection conn = DatabaseConnection.getConnection()) {
+                conn.createStatement().execute("DELETE FROM orders WHERE order_id = " + tmpId);
+            }
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(35)
+    void statusTransition_pendingToCompleted_isRejected() throws Exception {
+        // Skipping Preparing and Ready is not permitted.
+        int[] data = insertDirectOrder(testCustomer.getCustomerId(), "Pending");
+        int tmpId = data[0];
+        try {
+            assertThrows(RuntimeException.class,
+                () -> OrderService.updateOrderStatus(tmpId, "Completed"),
+                "Transition Pending -> Completed (skip) must be rejected");
+            assertEquals("Pending", getOrderStatus(tmpId),
+                "Status must remain Pending after the rejected transition");
+        } finally {
+            try (Connection conn = DatabaseConnection.getConnection()) {
+                conn.createStatement().execute("DELETE FROM orders WHERE order_id = " + tmpId);
+            }
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(36)
+    void statusTransition_preparingToPending_isRejected() throws Exception {
+        // Backward transition is not permitted.
+        int[] data = insertDirectOrder(testCustomer.getCustomerId(), "Preparing");
+        int tmpId = data[0];
+        try {
+            assertThrows(RuntimeException.class,
+                () -> OrderService.updateOrderStatus(tmpId, "Pending"),
+                "Transition Preparing -> Pending (backward) must be rejected");
+            assertEquals("Preparing", getOrderStatus(tmpId),
+                "Status must remain Preparing after the rejected transition");
+        } finally {
+            try (Connection conn = DatabaseConnection.getConnection()) {
+                conn.createStatement().execute("DELETE FROM orders WHERE order_id = " + tmpId);
+            }
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(37)
+    void statusTransition_sameStatus_isRejected() {
+        // testOrderId is in "Completed" state after @Order(32).
+        assertThrows(RuntimeException.class,
+            () -> OrderService.updateOrderStatus(testOrderId, "Completed"),
+            "Same-status update (Completed -> Completed) must be rejected");
+    }
+
+    @Test @org.junit.jupiter.api.Order(38)
+    void statusTransition_unknownStatus_isRejected() throws Exception {
+        int[] data = insertDirectOrder(testCustomer.getCustomerId(), "Pending");
+        int tmpId = data[0];
+        try {
+            assertThrows(RuntimeException.class,
+                () -> OrderService.updateOrderStatus(tmpId, "FooBar"),
+                "Completely unknown status must be rejected");
+            assertEquals("Pending", getOrderStatus(tmpId),
+                "Status must remain Pending after the rejected transition");
+        } finally {
+            try (Connection conn = DatabaseConnection.getConnection()) {
+                conn.createStatement().execute("DELETE FROM orders WHERE order_id = " + tmpId);
+            }
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(39)
+    void statusTransition_cancelledOrder_isRejected() throws Exception {
+        // A terminal Cancelled order must not accept any further status change.
+        int[] data = insertDirectOrder(testCustomer.getCustomerId(), "Cancelled");
+        int tmpId = data[0];
+        try {
+            assertThrows(RuntimeException.class,
+                () -> OrderService.updateOrderStatus(tmpId, "Preparing"),
+                "Transition Cancelled -> Preparing must be rejected (terminal state)");
+            assertEquals("Cancelled", getOrderStatus(tmpId),
+                "Status must remain Cancelled after the rejected transition");
+        } finally {
+            try (Connection conn = DatabaseConnection.getConnection()) {
+                conn.createStatement().execute("DELETE FROM orders WHERE order_id = " + tmpId);
+            }
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
     // CANCEL AND STOCK RESTORE
     // ══════════════════════════════════════════════════════════════════════
 
@@ -336,6 +437,50 @@ class ServiceValidationTest {
 
         assertEquals(stockAfterFirstCancel, getStockById(testFoodId),
             "Stock must not be restored a second time when double-cancel is correctly blocked");
+    }
+
+    @Test @org.junit.jupiter.api.Order(42)
+    void allowedNextStatuses_returnsCorrectTransitionsForEachStatus() {
+        // Pure in-memory helper test — no DB access required.
+        assertEquals(List.of("Preparing", "Cancelled"),
+            OrderService.getAllowedNextStatuses("Pending"),
+            "Pending must allow Preparing and Cancelled");
+        assertEquals(List.of("Ready", "Cancelled"),
+            OrderService.getAllowedNextStatuses("Preparing"),
+            "Preparing must allow Ready and Cancelled");
+        assertEquals(List.of("Completed"),
+            OrderService.getAllowedNextStatuses("Ready"),
+            "Ready must allow only Completed");
+        assertTrue(OrderService.getAllowedNextStatuses("Completed").isEmpty(),
+            "Completed is terminal — no allowed transitions");
+        assertTrue(OrderService.getAllowedNextStatuses("Cancelled").isEmpty(),
+            "Cancelled is terminal — no allowed transitions");
+        assertTrue(OrderService.getAllowedNextStatuses(null).isEmpty(),
+            "null input must return empty list (no NPE)");
+    }
+
+    @Test @org.junit.jupiter.api.Order(43)
+    void statusTransition_preparingToCancelled_succeedsAndRestoresStock() throws Exception {
+        // Covers the Preparing → Cancelled path (not exercised by the earlier cancel tests).
+        setStock(testFoodId, 20);
+        FoodItem food = getFoodById(testFoodId);
+        assertNotNull(food);
+
+        DataStore.cartItems.add(new CartItem(food, 2));
+        Order order = OrderService.placeOrder(testCustomer, DataStore.cartItems);
+        DataStore.cartItems.clear();
+        int stockAfterOrder = getStockById(testFoodId);
+        assertEquals(18, stockAfterOrder, "Stock must be 18 after ordering 2 units");
+
+        OrderService.updateOrderStatus(order.getOrderId(), "Preparing");
+        assertEquals("Preparing", getOrderStatus(order.getOrderId()),
+            "Order must advance to Preparing");
+
+        OrderService.updateOrderStatus(order.getOrderId(), "Cancelled");
+        assertEquals("Cancelled", getOrderStatus(order.getOrderId()),
+            "Order must be Cancelled after Preparing → Cancelled");
+        assertEquals(stockAfterOrder + 2, getStockById(testFoodId),
+            "Stock must be restored after cancellation from Preparing state");
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -1350,24 +1495,38 @@ class ServiceValidationTest {
      */
     private static void deleteTestFixtures() {
         try (Connection conn = DatabaseConnection.getConnection()) {
-            // Step 1: Delete orders for the main test customer (cascades to order_items)
-            conn.createStatement().execute(
+            // Each step has its own try-catch so one failure never blocks subsequent steps.
+            // LEFT(username, 3) = 'sv_' avoids all LIKE/ESCAPE quoting ambiguities.
+
+            // Step 1: Delete orders for ALL sv_ customers (cascades → order_items → food_ratings).
+            // Covers sv_testuser, sv_ratingother, and any other sv_ test fixtures with orders.
+            try { conn.createStatement().execute(
                 "DELETE FROM orders WHERE customer_id IN " +
-                "(SELECT customer_id FROM customers WHERE username = '" + TEST_USER + "')");
-            // Step 2: Delete the main test customer
-            conn.createStatement().execute(
+                "(SELECT customer_id FROM customers WHERE LEFT(username, 3) = 'sv_')");
+            } catch (Exception ignored) {}
+
+            // Step 2: Delete the main test customer (sv_testuser)
+            try { conn.createStatement().execute(
                 "DELETE FROM customers WHERE username = '" + TEST_USER + "'");
-            // Step 3: Delete any SV_ customer management fixtures (sv_custmgmt etc.)
-            conn.createStatement().execute(
-                "DELETE FROM customers WHERE username LIKE 'sv\\_%' ESCAPE '\\'");
+            } catch (Exception ignored) {}
+
+            // Step 3: Delete any remaining SV_ customers (sv_ratingother, sv_custmgmt, etc.)
+            try { conn.createStatement().execute(
+                "DELETE FROM customers WHERE LEFT(username, 3) = 'sv_'");
+            } catch (Exception ignored) {}
+
             // Step 4: Delete SV_ food items (FK: food_items → food_categories)
-            conn.createStatement().execute(
+            try { conn.createStatement().execute(
                 "DELETE FROM food_items WHERE food_name LIKE 'SV_%'");
+            } catch (Exception ignored) {}
+
             // Step 5: Delete SV_ food categories
-            conn.createStatement().execute(
+            try { conn.createStatement().execute(
                 "DELETE FROM food_categories WHERE category_name LIKE 'SV_%'");
+            } catch (Exception ignored) {}
+
         } catch (Exception ignored) {
-            // Fixtures did not exist — nothing to clean up
+            // Connection failure — nothing to clean up
         }
     }
 
@@ -2859,6 +3018,749 @@ class ServiceValidationTest {
                 assertEquals(originalImagePath, rs.getString("image_path"),
                         "image_path must be unchanged after a rolled-back update");
             }
+        }
+    }
+
+    // ── @Order(300-318): Food Rating and Review tests ────────────────────────
+
+    /** order_id of the SV_ completed order used in rating tests. */
+    static int svRatingOrderId   = -1;
+    /** item_id of the first order item in svRatingOrderId. */
+    static int svRatingItem1Id   = -1;
+    /** item_id of the second order item (for multi-item tests). */
+    static int svRatingItem2Id   = -1;
+    /** customer_id of a second SV_ customer for authorization tests. */
+    static int svOtherCustomerId = -1;
+    /** item_id belonging to svOtherCustomerId's order. */
+    static int svOtherItemId     = -1;
+
+    /**
+     * Inserts a minimal order + one order item directly via SQL.
+     * Returns [orderId, itemId].
+     */
+    private static int[] insertDirectOrder(int customerId, String status)
+            throws SQLException {
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            int orderId;
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "INSERT INTO orders (customer_id, total_amount, status) " +
+                    "VALUES (?, 100.00, ?)",
+                    java.sql.Statement.RETURN_GENERATED_KEYS)) {
+                ps.setInt(1, customerId);
+                ps.setString(2, status);
+                ps.executeUpdate();
+                try (ResultSet k = ps.getGeneratedKeys()) { k.next(); orderId = k.getInt(1); }
+            }
+            int itemId;
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "INSERT INTO order_items (order_id, food_id, food_name, unit_price, quantity) " +
+                    "VALUES (?, ?, 'SV_RatingTest', 100.00, 1)",
+                    java.sql.Statement.RETURN_GENERATED_KEYS)) {
+                ps.setInt(1, orderId);
+                ps.setInt(2, testFoodId);
+                ps.executeUpdate();
+                try (ResultSet k = ps.getGeneratedKeys()) { k.next(); itemId = k.getInt(1); }
+            }
+            return new int[]{orderId, itemId};
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(300)
+    void rating_table_and_constraints_exist() throws Exception {
+        // food_ratings table exists
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                "SELECT COUNT(*) FROM information_schema.TABLES " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'food_ratings'")) {
+            try (ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                assertTrue(rs.getInt(1) > 0, "food_ratings table must exist after migration");
+            }
+        }
+        // UNIQUE KEY on order_item_id
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                "SELECT COUNT(*) FROM information_schema.STATISTICS " +
+                "WHERE TABLE_SCHEMA = DATABASE() " +
+                "AND TABLE_NAME = 'food_ratings' " +
+                "AND INDEX_NAME = 'uk_food_rating_order_item' " +
+                "AND NON_UNIQUE = 0")) {
+            try (ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                assertTrue(rs.getInt(1) > 0, "UNIQUE KEY uk_food_rating_order_item must exist on food_ratings");
+            }
+        }
+        // CHECK constraint on rating (1–5)
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                "SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS " +
+                "WHERE TABLE_SCHEMA = DATABASE() " +
+                "AND TABLE_NAME = 'food_ratings' " +
+                "AND CONSTRAINT_NAME = 'chk_rating_value' " +
+                "AND CONSTRAINT_TYPE = 'CHECK'")) {
+            try (ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                assertTrue(rs.getInt(1) > 0, "CHECK constraint chk_rating_value must exist on food_ratings");
+            }
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(301)
+    void rating_setup_completedOrderFixture() throws Exception {
+        // Completed order with 2 items for testCustomer
+        int[] r1 = insertDirectOrder(testCustomer.getCustomerId(), "Completed");
+        svRatingOrderId = r1[0];
+        svRatingItem1Id = r1[1];
+        // Insert a second item into the same order
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                "INSERT INTO order_items (order_id, food_id, food_name, unit_price, quantity) " +
+                "VALUES (?, ?, 'SV_RatingTest2', 200.00, 2)",
+                java.sql.Statement.RETURN_GENERATED_KEYS)) {
+            ps.setInt(1, svRatingOrderId);
+            ps.setInt(2, testFoodId);
+            ps.executeUpdate();
+            try (ResultSet k = ps.getGeneratedKeys()) { k.next(); svRatingItem2Id = k.getInt(1); }
+        }
+        // Create another customer's completed order
+        svOtherCustomerId = citybites.service.CustomerManagementService.addCustomer(
+            "SV Rating Other", "sv_ratingother", "RatingOther1!", "RatingOther1!");
+        assertTrue(svOtherCustomerId > 0, "Second SV_ customer must be created");
+        int[] r2 = insertDirectOrder(svOtherCustomerId, "Completed");
+        svOtherItemId = r2[1];
+
+        assertTrue(svRatingOrderId  > 0, "svRatingOrderId must be set");
+        assertTrue(svRatingItem1Id  > 0, "svRatingItem1Id must be set");
+        assertTrue(svRatingItem2Id  > 0, "svRatingItem2Id must be set");
+        assertTrue(svOtherItemId    > 0, "svOtherItemId must be set");
+    }
+
+    @Test @org.junit.jupiter.api.Order(302)
+    void rating_completedOrderItem_canBeRated() {
+        SessionManager.setLoggedInCustomer(testCustomer);
+        String error = citybites.service.FoodRatingService.saveRating(svRatingItem1Id, 4, "Great food!");
+        assertNull(error, "Saving a rating for a completed order item must succeed; got: " + error);
+
+        Optional<citybites.model.FoodRating> rating =
+            citybites.service.FoodRatingService.getRatingForOrderItem(svRatingItem1Id);
+        assertTrue(rating.isPresent(), "Rating must be retrievable after saving");
+        assertEquals(4, rating.get().getRating(), "Rating value must be 4");
+        assertEquals("Great food!", rating.get().getReviewText(), "Review text must match");
+    }
+
+    @Test @org.junit.jupiter.api.Order(303)
+    void rating_pendingOrderItem_isRejected() throws Exception {
+        SessionManager.setLoggedInCustomer(testCustomer);
+        int[] pendingData = insertDirectOrder(testCustomer.getCustomerId(), "Pending");
+        int pendingItemId = pendingData[1];
+        try {
+            String error = citybites.service.FoodRatingService.saveRating(pendingItemId, 3, null);
+            assertNotNull(error, "Rating a pending order item must return an error message");
+            assertTrue(error.toLowerCase().contains("complet") || error.toLowerCase().contains("status"),
+                "Error must mention 'Completed' or 'status'; got: " + error);
+        } finally {
+            try (Connection conn = DatabaseConnection.getConnection()) {
+                conn.createStatement().execute("DELETE FROM orders WHERE order_id = " + pendingData[0]);
+            }
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(304)
+    void rating_cancelledOrderItem_isRejected() throws Exception {
+        SessionManager.setLoggedInCustomer(testCustomer);
+        int[] cancelledData = insertDirectOrder(testCustomer.getCustomerId(), "Cancelled");
+        int cancelledItemId = cancelledData[1];
+        try {
+            String error = citybites.service.FoodRatingService.saveRating(cancelledItemId, 5, null);
+            assertNotNull(error, "Rating a cancelled order item must return an error message");
+            assertTrue(error.toLowerCase().contains("complet") || error.toLowerCase().contains("status"),
+                "Error must mention 'Completed' or 'status'; got: " + error);
+        } finally {
+            try (Connection conn = DatabaseConnection.getConnection()) {
+                conn.createStatement().execute("DELETE FROM orders WHERE order_id = " + cancelledData[0]);
+            }
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(305)
+    void rating_anotherCustomersItem_isRejected() {
+        // testCustomer tries to rate svOtherCustomerId's order item
+        SessionManager.setLoggedInCustomer(testCustomer);
+        String error = citybites.service.FoodRatingService.saveRating(svOtherItemId, 3, null);
+        assertNotNull(error, "Rating another customer's order item must return an error");
+        assertTrue(error.toLowerCase().contains("belong") || error.toLowerCase().contains("account")
+                   || error.toLowerCase().contains("not found"),
+            "Error must mention ownership; got: " + error);
+    }
+
+    @Test @org.junit.jupiter.api.Order(306)
+    void rating_belowOne_isRejected() {
+        SessionManager.setLoggedInCustomer(testCustomer);
+        String error = citybites.service.FoodRatingService.saveRating(svRatingItem2Id, 0, null);
+        assertNotNull(error, "Rating 0 must be rejected");
+        assertTrue(error.toLowerCase().contains("rating") || error.toLowerCase().contains("1"),
+            "Error must mention valid range; got: " + error);
+    }
+
+    @Test @org.junit.jupiter.api.Order(307)
+    void rating_aboveFive_isRejected() {
+        SessionManager.setLoggedInCustomer(testCustomer);
+        String error = citybites.service.FoodRatingService.saveRating(svRatingItem2Id, 6, null);
+        assertNotNull(error, "Rating 6 must be rejected");
+        assertTrue(error.toLowerCase().contains("rating") || error.toLowerCase().contains("5"),
+            "Error must mention valid range; got: " + error);
+    }
+
+    @Test @org.junit.jupiter.api.Order(308)
+    void rating_blankReview_storedAsNull() {
+        SessionManager.setLoggedInCustomer(testCustomer);
+        // Rate item2 with a blank review (spaces only) — should be stored as NULL
+        String error = citybites.service.FoodRatingService.saveRating(svRatingItem2Id, 3, "   ");
+        assertNull(error, "Rating with blank review must succeed; got: " + error);
+
+        Optional<citybites.model.FoodRating> rating =
+            citybites.service.FoodRatingService.getRatingForOrderItem(svRatingItem2Id);
+        assertTrue(rating.isPresent(), "Rating must exist after save");
+        assertNull(rating.get().getReviewText(),
+            "Blank review (whitespace only) must be stored as NULL, not as whitespace string");
+    }
+
+    @Test @org.junit.jupiter.api.Order(309)
+    void rating_overlengthReview_isRejected() {
+        SessionManager.setLoggedInCustomer(testCustomer);
+        String longReview = "A".repeat(501);   // 501 chars > 500 limit
+        String error = citybites.service.FoodRatingService.saveRating(svRatingItem2Id, 5, longReview);
+        assertNotNull(error, "Review exceeding 500 chars must be rejected");
+        assertTrue(error.toLowerCase().contains("500") || error.toLowerCase().contains("review"),
+            "Error must mention review length; got: " + error);
+    }
+
+    @Test @org.junit.jupiter.api.Order(310)
+    void rating_existingRating_loadsCorrectly() {
+        // svRatingItem1Id was rated in @Order(302) with rating=4, review="Great food!"
+        Optional<citybites.model.FoodRating> rating =
+            citybites.service.FoodRatingService.getRatingForOrderItem(svRatingItem1Id);
+        assertTrue(rating.isPresent(), "Existing rating must be retrievable");
+        assertEquals(4, rating.get().getRating(), "Rating must be 4 (set in test 302)");
+        assertEquals("Great food!", rating.get().getReviewText(), "Review must be 'Great food!'");
+        assertEquals(svRatingItem1Id, rating.get().getOrderItemId(), "orderItemId must match");
+    }
+
+    @Test @org.junit.jupiter.api.Order(311)
+    void rating_existingRating_canBeUpdated() {
+        SessionManager.setLoggedInCustomer(testCustomer);
+        // Update rating from 4 → 5 and change review
+        String error = citybites.service.FoodRatingService.saveRating(svRatingItem1Id, 5, "Even better!");
+        assertNull(error, "Updating an existing rating must succeed; got: " + error);
+
+        Optional<citybites.model.FoodRating> rating =
+            citybites.service.FoodRatingService.getRatingForOrderItem(svRatingItem1Id);
+        assertTrue(rating.isPresent(), "Rating must still exist after update");
+        assertEquals(5, rating.get().getRating(), "Rating must be updated to 5");
+        assertEquals("Even better!", rating.get().getReviewText(), "Review must be updated");
+    }
+
+    @Test @org.junit.jupiter.api.Order(312)
+    void rating_updateDoesNotCreateDuplicate() throws Exception {
+        // Multiple saves for the same order item must not insert extra rows
+        SessionManager.setLoggedInCustomer(testCustomer);
+        citybites.service.FoodRatingService.saveRating(svRatingItem1Id, 3, "Third save");
+        citybites.service.FoodRatingService.saveRating(svRatingItem1Id, 2, "Fourth save");
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                "SELECT COUNT(*) FROM food_ratings WHERE order_item_id = ?")) {
+            ps.setInt(1, svRatingItem1Id);
+            try (ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                assertEquals(1, rs.getInt(1),
+                    "Exactly one food_ratings row must exist per order_item_id after multiple saves");
+            }
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(313)
+    void rating_multipleItemsInOrder_supportSeparateRatings() {
+        SessionManager.setLoggedInCustomer(testCustomer);
+        // item1 already rated; now rate item2 independently
+        Optional<citybites.model.FoodRating> r1 =
+            citybites.service.FoodRatingService.getRatingForOrderItem(svRatingItem1Id);
+        assertTrue(r1.isPresent(), "item1 must already be rated");
+
+        // item2 was rated in @Order(308); verify independent existence
+        Optional<citybites.model.FoodRating> r2 =
+            citybites.service.FoodRatingService.getRatingForOrderItem(svRatingItem2Id);
+        assertTrue(r2.isPresent(), "item2 must have its own independent rating");
+        assertNotEquals(r1.get().getRatingId(), r2.get().getRatingId(),
+            "item1 and item2 must have separate rating_id values");
+
+        List<citybites.model.FoodRating> byOrder =
+            citybites.service.FoodRatingService.getRatingsForOrder(svRatingOrderId);
+        assertTrue(byOrder.size() >= 2,
+            "getRatingsForOrder must return at least 2 ratings for a 2-item order");
+    }
+
+    @Test @org.junit.jupiter.api.Order(314)
+    void rating_unauthenticatedSession_isRejected() {
+        SessionManager.setLoggedInCustomer(null);   // clear session
+        try {
+            String error = citybites.service.FoodRatingService.saveRating(svRatingItem1Id, 5, null);
+            assertNotNull(error, "saveRating without a logged-in customer must return an error");
+            assertTrue(error.toLowerCase().contains("session") || error.toLowerCase().contains("log"),
+                "Error must mention session/login; got: " + error);
+        } finally {
+            SessionManager.setLoggedInCustomer(testCustomer);   // restore
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(315)
+    void rating_migration_isIdempotent() throws Exception {
+        // Calling DatabaseInitializer.initialize() a second time must not throw or duplicate data
+        assertDoesNotThrow(
+            () -> DatabaseInitializer.initialize(),
+            "DatabaseInitializer.initialize() must be safe to call repeatedly (idempotent)");
+
+        // Migration key must still appear exactly once in schema_migrations
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                "SELECT COUNT(*) FROM schema_migrations WHERE migration_key = '20260903_add_food_ratings_table'")) {
+            try (ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                assertEquals(1, rs.getInt(1),
+                    "Migration key 20260903_add_food_ratings_table must appear exactly once after repeated init");
+            }
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(316)
+    void rating_cascadeDelete_deletingOrderRemovesRatings() throws Exception {
+        // Create a fresh completed order with one item, rate it, then delete the order.
+        // The rating must cascade-delete automatically.
+        SessionManager.setLoggedInCustomer(testCustomer);
+        int[] data = insertDirectOrder(testCustomer.getCustomerId(), "Completed");
+        int tempOrderId = data[0];
+        int tempItemId  = data[1];
+
+        String err = citybites.service.FoodRatingService.saveRating(tempItemId, 4, null);
+        assertNull(err, "Setup rating must succeed; got: " + err);
+
+        // Verify rating exists
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                "SELECT COUNT(*) FROM food_ratings WHERE order_item_id = ?")) {
+            ps.setInt(1, tempItemId);
+            try (ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                assertEquals(1, rs.getInt(1), "Rating must exist before order deletion");
+            }
+        }
+
+        // Delete the order — order_items cascade, which cascades to food_ratings
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            conn.createStatement().execute("DELETE FROM orders WHERE order_id = " + tempOrderId);
+        }
+
+        // Rating must be gone
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                "SELECT COUNT(*) FROM food_ratings WHERE order_item_id = ?")) {
+            ps.setInt(1, tempItemId);
+            try (ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                assertEquals(0, rs.getInt(1),
+                    "Rating must cascade-delete when its order is deleted");
+            }
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(317)
+    void rating_invalidOrderItemId_isRejectedCleanly() {
+        SessionManager.setLoggedInCustomer(testCustomer);
+        // A non-existent order item ID must return an error, never throw uncaught
+        String error = citybites.service.FoodRatingService.saveRating(Integer.MAX_VALUE, 3, null);
+        assertNotNull(error, "saveRating for a non-existent order item must return an error");
+        assertTrue(error.toLowerCase().contains("not found") || error.toLowerCase().contains("item"),
+            "Error must indicate the order item was not found; got: " + error);
+    }
+
+    @Test @org.junit.jupiter.api.Order(318)
+    void rating_nullReview_explicitlyNull_storedAsNull() {
+        SessionManager.setLoggedInCustomer(testCustomer);
+        // Rate item2 explicitly with null review
+        String error = citybites.service.FoodRatingService.saveRating(svRatingItem2Id, 1, null);
+        assertNull(error, "Rating with explicit null review must succeed; got: " + error);
+
+        Optional<citybites.model.FoodRating> rating =
+            citybites.service.FoodRatingService.getRatingForOrderItem(svRatingItem2Id);
+        assertTrue(rating.isPresent(), "Rating must exist after save");
+        assertNull(rating.get().getReviewText(), "Null review must be stored as NULL in DB");
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // ADMIN FOOD RATING REVIEWS (@Order 350-365)
+    // ══════════════════════════════════════════════════════════════════════
+
+    /** food_id of the SV_ food item created for admin rating review tests. */
+    static int svAdminFoodId  = -1;
+    /** item_id of the first rated order item (rating=4). */
+    static int svAdminItemId  = -1;
+    /** item_id of the second rated order item (rating=2). */
+    static int svAdminItemId2 = -1;
+
+    /**
+     * Inserts a Completed order + one order item for the given food.
+     * Returns [orderId, itemId].
+     */
+    private static int[] insertDirectOrderForFood(int customerId, int foodId, String foodName)
+            throws SQLException {
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            int orderId;
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "INSERT INTO orders (customer_id, total_amount, status) " +
+                    "VALUES (?, 100.00, 'Completed')",
+                    java.sql.Statement.RETURN_GENERATED_KEYS)) {
+                ps.setInt(1, customerId);
+                ps.executeUpdate();
+                try (ResultSet k = ps.getGeneratedKeys()) { k.next(); orderId = k.getInt(1); }
+            }
+            int itemId;
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "INSERT INTO order_items (order_id, food_id, food_name, unit_price, quantity) " +
+                    "VALUES (?, ?, ?, 100.00, 1)",
+                    java.sql.Statement.RETURN_GENERATED_KEYS)) {
+                ps.setInt(1, orderId);
+                ps.setInt(2, foodId);
+                ps.setString(3, foodName);
+                ps.executeUpdate();
+                try (ResultSet k = ps.getGeneratedKeys()) { k.next(); itemId = k.getInt(1); }
+            }
+            return new int[]{orderId, itemId};
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(350)
+    void adminReview_setup_createFirstRatedItem() throws Exception {
+        svAdminFoodId = FoodService.addFoodItem("SV_AdminReviewFood", 100.0, true, 10, null);
+        assertTrue(svAdminFoodId > 0, "SV_AdminReviewFood must be created");
+        int[] data = insertDirectOrderForFood(
+                testCustomer.getCustomerId(), svAdminFoodId, "SV_AdminReviewFood");
+        svAdminItemId = data[1];
+        SessionManager.setLoggedInCustomer(testCustomer);
+        String err = citybites.service.FoodRatingService.saveRating(svAdminItemId, 4, "Admin review text");
+        assertNull(err, "First rating must succeed: " + err);
+    }
+
+    @Test @org.junit.jupiter.api.Order(351)
+    void adminReview_singleRating_correctAverage() {
+        java.util.Map<Integer, citybites.model.FoodRatingSummary> map =
+            citybites.service.FoodRatingService.getRatingSummaries();
+        citybites.model.FoodRatingSummary s = map.get(svAdminFoodId);
+        assertNotNull(s, "Summary must exist for svAdminFoodId after first rating");
+        assertEquals(1, s.getRatingCount(), "count must be 1 after first rating");
+        assertEquals(4.0, s.getAverageRating(), 0.01, "avg must be 4.0 after rating of 4");
+    }
+
+    @Test @org.junit.jupiter.api.Order(352)
+    void adminReview_addSecondRating_avgUpdates() throws Exception {
+        int[] data2 = insertDirectOrderForFood(
+                testCustomer.getCustomerId(), svAdminFoodId, "SV_AdminReviewFood");
+        svAdminItemId2 = data2[1];
+        SessionManager.setLoggedInCustomer(testCustomer);
+        String err = citybites.service.FoodRatingService.saveRating(svAdminItemId2, 2, null);
+        assertNull(err, "Second rating must succeed: " + err);
+
+        java.util.Map<Integer, citybites.model.FoodRatingSummary> map =
+            citybites.service.FoodRatingService.getRatingSummaries();
+        citybites.model.FoodRatingSummary s = map.get(svAdminFoodId);
+        assertNotNull(s, "Summary must exist after second rating");
+        assertEquals(3.0, s.getAverageRating(), 0.01,
+            "avg must be 3.0 after ratings of 4 and 2");
+    }
+
+    @Test @org.junit.jupiter.api.Order(353)
+    void adminReview_ratingCount_correct() {
+        java.util.Map<Integer, citybites.model.FoodRatingSummary> map =
+            citybites.service.FoodRatingService.getRatingSummaries();
+        citybites.model.FoodRatingSummary s = map.get(svAdminFoodId);
+        assertNotNull(s, "Summary must exist for svAdminFoodId");
+        assertEquals(2, s.getRatingCount(), "count must be 2 after two ratings");
+    }
+
+    @Test @org.junit.jupiter.api.Order(354)
+    void adminReview_foodWithNoRatings_zeroCount() {
+        int freshId = FoodService.addFoodItem("SV_AdminNoRating", 50.0, true, 5, null);
+        assertTrue(freshId > 0, "SV_AdminNoRating must be created");
+        try {
+            java.util.Map<Integer, citybites.model.FoodRatingSummary> map =
+                citybites.service.FoodRatingService.getRatingSummaries();
+            citybites.model.FoodRatingSummary s = map.get(freshId);
+            assertNotNull(s, "Summary must include foods with no ratings");
+            assertEquals(0, s.getRatingCount(), "count must be 0 for a food with no ratings");
+            assertEquals(0.0, s.getAverageRating(), 0.001, "avg must be 0.0 when count==0");
+        } finally {
+            try { FoodService.deleteFoodItem(freshId); } catch (Exception ignored) {}
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(355)
+    void adminReview_getReviewsForFood_containsCorrectFoodName() {
+        java.util.List<citybites.model.FoodReviewDetail> reviews =
+            citybites.service.FoodRatingService.getReviewsForFood(svAdminFoodId);
+        assertFalse(reviews.isEmpty(), "Reviews must not be empty for svAdminFoodId");
+        reviews.forEach(r -> assertEquals("SV_AdminReviewFood", r.getFoodName(),
+            "Every review detail must carry the correct food name"));
+    }
+
+    @Test @org.junit.jupiter.api.Order(356)
+    void adminReview_getReviewsForFood_containsCustomerFullName() {
+        java.util.List<citybites.model.FoodReviewDetail> reviews =
+            citybites.service.FoodRatingService.getReviewsForFood(svAdminFoodId);
+        assertFalse(reviews.isEmpty(), "Reviews list must not be empty");
+        reviews.forEach(r -> {
+            assertNotNull(r.getCustomerFullName(), "customerFullName must not be null");
+            assertFalse(r.getCustomerFullName().isBlank(), "customerFullName must not be blank");
+        });
+    }
+
+    @Test @org.junit.jupiter.api.Order(357)
+    void adminReview_getReviewsForFood_onlyForRequestedFood() {
+        int otherId = FoodService.addFoodItem("SV_AdminOtherFood", 80.0, true, 5, null);
+        assertTrue(otherId > 0, "SV_AdminOtherFood must be created");
+        try {
+            java.util.List<citybites.model.FoodReviewDetail> reviews =
+                citybites.service.FoodRatingService.getReviewsForFood(otherId);
+            assertTrue(reviews.isEmpty(),
+                "Reviews for an unrated food must be empty");
+        } finally {
+            try { FoodService.deleteFoodItem(otherId); } catch (Exception ignored) {}
+        }
+    }
+
+    @Test @org.junit.jupiter.api.Order(358)
+    void adminReview_reviewDetail_includesDates() {
+        java.util.List<citybites.model.FoodReviewDetail> reviews =
+            citybites.service.FoodRatingService.getReviewsForFood(svAdminFoodId);
+        assertFalse(reviews.isEmpty(), "Reviews must not be empty");
+        citybites.model.FoodReviewDetail r = reviews.get(0);
+        assertNotNull(r.getOrderDate(), "orderDate must not be null in review detail");
+        assertNotNull(r.getCreatedAt(), "createdAt must not be null in review detail");
+    }
+
+    @Test @org.junit.jupiter.api.Order(359)
+    void adminReview_nullReview_safe() {
+        java.util.List<citybites.model.FoodReviewDetail> reviews =
+            citybites.service.FoodRatingService.getReviewsForFood(svAdminFoodId);
+        boolean hasNullReview = reviews.stream().anyMatch(r -> r.getReviewText() == null);
+        assertTrue(hasNullReview,
+            "At least one review must have null reviewText (svAdminItemId2 was rated with null)");
+    }
+
+    @Test @org.junit.jupiter.api.Order(360)
+    void adminReview_invalidFoodId_rejected() {
+        assertThrows(IllegalArgumentException.class,
+            () -> citybites.service.FoodRatingService.getReviewsForFood(0),
+            "CORRECTLY REJECTED: foodId=0 must throw IllegalArgumentException");
+    }
+
+    @Test @org.junit.jupiter.api.Order(361)
+    void adminReview_nonExistentFoodId_handled() {
+        assertThrows(IllegalArgumentException.class,
+            () -> citybites.service.FoodRatingService.getReviewsForFood(Integer.MAX_VALUE),
+            "CORRECTLY REJECTED: non-existent food ID must throw IllegalArgumentException");
+    }
+
+    @Test @org.junit.jupiter.api.Order(362)
+    void adminReview_updateRating_doesNotIncrementCount() {
+        SessionManager.setLoggedInCustomer(testCustomer);
+        String err = citybites.service.FoodRatingService.saveRating(svAdminItemId, 5, "Updated review");
+        assertNull(err, "Rating update must succeed");
+
+        java.util.Map<Integer, citybites.model.FoodRatingSummary> map =
+            citybites.service.FoodRatingService.getRatingSummaries();
+        citybites.model.FoodRatingSummary s = map.get(svAdminFoodId);
+        assertNotNull(s, "Summary must still exist after update");
+        assertEquals(2, s.getRatingCount(),
+            "count must still be 2 — updating an existing rating must not insert a new row");
+    }
+
+    @Test @org.junit.jupiter.api.Order(363)
+    void adminReview_summaryMap_includesAllFoods() {
+        java.util.Map<Integer, citybites.model.FoodRatingSummary> map =
+            citybites.service.FoodRatingService.getRatingSummaries();
+        assertTrue(map.containsKey(svAdminFoodId),
+            "Summary map must contain an entry for svAdminFoodId");
+        assertTrue(map.containsKey(testFoodId),
+            "Summary map must contain an entry for testFoodId");
+    }
+
+    @Test @org.junit.jupiter.api.Order(364)
+    void adminReview_reviewDTO_hasNoPasswordField() {
+        Class<?> clazz = citybites.model.FoodReviewDetail.class;
+        assertThrows(NoSuchMethodException.class,
+            () -> clazz.getMethod("getPasswordHash"),
+            "FoodReviewDetail must not expose getPasswordHash()");
+        assertThrows(NoSuchMethodException.class,
+            () -> clazz.getMethod("getPassword"),
+            "FoodReviewDetail must not expose getPassword()");
+        assertThrows(NoSuchMethodException.class,
+            () -> clazz.getMethod("getCustomerId"),
+            "FoodReviewDetail must not expose getCustomerId()");
+    }
+
+    @Test @org.junit.jupiter.api.Order(365)
+    void adminReview_getReviewsForFood_countMatchesSummary() {
+        java.util.List<citybites.model.FoodReviewDetail> reviews =
+            citybites.service.FoodRatingService.getReviewsForFood(svAdminFoodId);
+        java.util.Map<Integer, citybites.model.FoodRatingSummary> map =
+            citybites.service.FoodRatingService.getRatingSummaries();
+        citybites.model.FoodRatingSummary s = map.get(svAdminFoodId);
+        assertNotNull(s, "Summary must exist for svAdminFoodId");
+        assertEquals(reviews.size(), s.getRatingCount(),
+            "list.size() from getReviewsForFood must equal getRatingCount() from summary");
+    }
+
+    // ─── StarRatingPanel UI unit tests (@Order 370–376) ──────────────────────
+
+    @Test @org.junit.jupiter.api.Order(370)
+    void starPanel_starCount_constant_is_five() {
+        assertEquals(5, citybites.ui.StarRatingPanel.STAR_COUNT,
+            "STAR_COUNT must always be 5");
+    }
+
+    @Test @org.junit.jupiter.api.Order(371)
+    void starPanel_rating_stored_correctly() {
+        if (java.awt.GraphicsEnvironment.isHeadless()) return;
+        citybites.ui.StarRatingPanel panel = new citybites.ui.StarRatingPanel(3);
+        assertEquals(3, panel.getRating(), "StarRatingPanel must store rating=3");
+    }
+
+    @Test @org.junit.jupiter.api.Order(372)
+    void starPanel_rating_1_edge_case_safe() {
+        if (java.awt.GraphicsEnvironment.isHeadless()) return;
+        citybites.ui.StarRatingPanel panel = new citybites.ui.StarRatingPanel(1);
+        assertEquals(1, panel.getRating(), "StarRatingPanel must handle edge case rating=1");
+    }
+
+    @Test @org.junit.jupiter.api.Order(373)
+    void starPanel_rating_5_edge_case_safe() {
+        if (java.awt.GraphicsEnvironment.isHeadless()) return;
+        citybites.ui.StarRatingPanel panel = new citybites.ui.StarRatingPanel(5);
+        assertEquals(5, panel.getRating(), "StarRatingPanel must handle edge case rating=5");
+    }
+
+    @Test @org.junit.jupiter.api.Order(374)
+    void starPanel_out_of_range_ratings_clamped() {
+        if (java.awt.GraphicsEnvironment.isHeadless()) return;
+        citybites.ui.StarRatingPanel low  = new citybites.ui.StarRatingPanel(-1);
+        citybites.ui.StarRatingPanel high = new citybites.ui.StarRatingPanel(9);
+        assertEquals(0, low.getRating(),  "Rating below 0 must clamp to 0");
+        assertEquals(5, high.getRating(), "Rating above 5 must clamp to 5");
+    }
+
+    @Test @org.junit.jupiter.api.Order(375)
+    void formatCount_singular_and_plural() {
+        citybites.model.FoodRatingSummary one  = new citybites.model.FoodRatingSummary(1, 4.5, 1);
+        citybites.model.FoodRatingSummary many = new citybites.model.FoodRatingSummary(1, 3.0, 7);
+        citybites.model.FoodRatingSummary zero = new citybites.model.FoodRatingSummary(1, 0.0, 0);
+        assertEquals("1 review",  one.formatCount(),  "count=1 must return '1 review'");
+        assertEquals("7 reviews", many.formatCount(), "count=7 must return '7 reviews'");
+        assertEquals("0 reviews", zero.formatCount(), "count=0 must return '0 reviews'");
+    }
+
+    @Test @org.junit.jupiter.api.Order(376)
+    void formatAverage_em_dash_when_zero_count() {
+        citybites.model.FoodRatingSummary zero = new citybites.model.FoodRatingSummary(1, 0.0, 0);
+        citybites.model.FoodRatingSummary rated = new citybites.model.FoodRatingSummary(1, 4.5, 2);
+        assertEquals("\u2014", zero.formatAverage(),
+            "formatAverage must return em-dash when ratingCount==0");
+        assertEquals("4.5 / 5", rated.formatAverage(),
+            "formatAverage must return formatted string when ratingCount>0");
+    }
+
+    // ─── Interactive StarRatingPanel tests (@Order 380–388) ──────────────────
+
+    @Test @org.junit.jupiter.api.Order(380)
+    void interactivePanel_defaults_to_zero_when_no_existing() {
+        if (java.awt.GraphicsEnvironment.isHeadless()) return;
+        citybites.ui.StarRatingPanel panel = citybites.ui.StarRatingPanel.interactive(0);
+        assertEquals(0, panel.getRating(),
+            "Interactive panel constructed with 0 must return getRating()==0");
+    }
+
+    @Test @org.junit.jupiter.api.Order(381)
+    void interactivePanel_stores_selected_rating() {
+        if (java.awt.GraphicsEnvironment.isHeadless()) return;
+        citybites.ui.StarRatingPanel panel = citybites.ui.StarRatingPanel.interactive(0);
+        panel.setRating(3);
+        assertEquals(3, panel.getRating(),
+            "setRating(3) on interactive panel must store rating 3");
+    }
+
+    @Test @org.junit.jupiter.api.Order(382)
+    void interactivePanel_change_from_3_to_5() {
+        if (java.awt.GraphicsEnvironment.isHeadless()) return;
+        citybites.ui.StarRatingPanel panel = citybites.ui.StarRatingPanel.interactive(0);
+        panel.setRating(3);
+        panel.setRating(5);
+        assertEquals(5, panel.getRating(),
+            "Changing rating from 3 to 5 must store 5");
+    }
+
+    @Test @org.junit.jupiter.api.Order(383)
+    void interactivePanel_existing_rating_loaded() {
+        if (java.awt.GraphicsEnvironment.isHeadless()) return;
+        citybites.ui.StarRatingPanel panel = citybites.ui.StarRatingPanel.interactive(4);
+        assertEquals(4, panel.getRating(),
+            "Interactive panel constructed with existing rating 4 must return 4");
+    }
+
+    @Test @org.junit.jupiter.api.Order(384)
+    void interactivePanel_clamping() {
+        if (java.awt.GraphicsEnvironment.isHeadless()) return;
+        citybites.ui.StarRatingPanel low  = citybites.ui.StarRatingPanel.interactive(-1);
+        citybites.ui.StarRatingPanel high = citybites.ui.StarRatingPanel.interactive(9);
+        assertEquals(0, low.getRating(),  "Rating < 0 must clamp to 0");
+        assertEquals(5, high.getRating(), "Rating > 5 must clamp to 5");
+    }
+
+    @Test @org.junit.jupiter.api.Order(385)
+    void readOnly_panel_not_affected_by_interactive_factory() {
+        if (java.awt.GraphicsEnvironment.isHeadless()) return;
+        citybites.ui.StarRatingPanel ro = new citybites.ui.StarRatingPanel(3);
+        assertEquals(3, ro.getRating(),
+            "Read-only StarRatingPanel(3) must always return 3");
+        // setRating is a no-op for read-only panels
+        ro.setRating(5);
+        assertEquals(3, ro.getRating(),
+            "setRating on read-only panel must have no effect");
+    }
+
+    @Test @org.junit.jupiter.api.Order(386)
+    void both_modes_have_five_star_count() {
+        assertEquals(5, citybites.ui.StarRatingPanel.STAR_COUNT,
+            "STAR_COUNT must be 5 in both modes");
+    }
+
+    @Test @org.junit.jupiter.api.Order(387)
+    void interactivePanel_callback_fires_on_setRating() {
+        if (java.awt.GraphicsEnvironment.isHeadless()) return;
+        citybites.ui.StarRatingPanel panel = citybites.ui.StarRatingPanel.interactive(0);
+        int[] callbackCount = {0};
+        panel.setOnRatingChanged(() -> callbackCount[0]++);
+        panel.setRating(3);
+        panel.setRating(5);
+        assertEquals(2, callbackCount[0],
+            "onRatingChanged callback must fire once per setRating call");
+    }
+
+    @Test @org.junit.jupiter.api.Order(388)
+    void foodRatingDialog_no_unicode_star_fields() {
+        Class<?> clazz = citybites.ui.FoodRatingDialog.class;
+        for (java.lang.reflect.Field f : clazz.getDeclaredFields()) {
+            assertFalse("STAR_FILLED".equals(f.getName()),
+                "STAR_FILLED Unicode field must be removed from FoodRatingDialog");
+            assertFalse("STAR_EMPTY".equals(f.getName()),
+                "STAR_EMPTY Unicode field must be removed from FoodRatingDialog");
         }
     }
 

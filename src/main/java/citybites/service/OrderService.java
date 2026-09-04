@@ -13,6 +13,7 @@ import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -23,6 +24,10 @@ public class OrderService {
 
     private static final Logger logger = Logger.getLogger(OrderService.class.getName());
     private static final OrderDAO orderDAO = new OrderDAOImpl();
+
+    private static final Set<String> KNOWN_STATUSES = Set.of(
+        Order.STATUS_PENDING, Order.STATUS_PREPARING, Order.STATUS_READY,
+        Order.STATUS_COMPLETED, Order.STATUS_CANCELLED);
 
     private OrderService() {}
 
@@ -136,28 +141,34 @@ public class OrderService {
     /**
      * Updates the status of an order, enforcing a controlled transition workflow.
      * Allowed transitions:
-     *   Pending    \u2192 Preparing | Cancelled
-     *   Preparing  \u2192 Ready     | Cancelled
-     *   Ready      \u2192 Completed
-     *   Completed  \u2192 (terminal)
-     *   Cancelled  \u2192 (terminal)
+     *   Pending    → Preparing | Cancelled
+     *   Preparing  → Ready     | Cancelled
+     *   Ready      → Completed
+     *   Completed  → (terminal)
+     *   Cancelled  → (terminal)
      *
+     * <p>Throws {@link IllegalArgumentException} for any domain/validation failure
+     * (unknown status, invalid transition, same status, order not found).
      * Cancelling an order restores stock and re-enables availability in a transaction.
      */
     public static boolean updateOrderStatus(int orderId, String newStatus) {
+        if (newStatus == null || newStatus.isBlank())
+            throw new IllegalArgumentException("Status must not be blank.");
+        if (!KNOWN_STATUSES.contains(newStatus))
+            throw new IllegalArgumentException("Unknown status: \"" + newStatus + "\".");
+
         String current = orderDAO.getStatusById(orderId);
-        if (current == null) {
-            throw new RuntimeException("Order " + orderId + " not found.");
-        }
-        if (!isValidTransition(current, newStatus)) {
-            throw new RuntimeException(
-                    "Invalid status transition: " + current + " -> " + newStatus);
-        }
+        if (current == null)
+            throw new IllegalArgumentException("Order " + orderId + " not found.");
+        if (current.equals(newStatus))
+            throw new IllegalArgumentException(
+                "Order is already in \"" + newStatus + "\" status.");
+        if (!canTransition(current, newStatus))
+            throw new IllegalArgumentException(
+                "Invalid status transition: " + current + " \u2192 " + newStatus);
 
-        if ("Cancelled".equals(newStatus) && !"Cancelled".equals(current)) {
+        if (Order.STATUS_CANCELLED.equals(newStatus))
             orderDAO.restoreStockAndAvailability(orderId);
-        }
-
         return orderDAO.updateStatus(orderId, newStatus);
     }
 
@@ -165,12 +176,22 @@ public class OrderService {
         return orderDAO.countPending();
     }
 
-    private static boolean isValidTransition(String from, String to) {
-        return switch (from) {
-            case "Pending"   -> "Preparing".equals(to) || "Cancelled".equals(to);
-            case "Preparing" -> "Ready".equals(to)     || "Cancelled".equals(to);
-            case "Ready"     -> "Completed".equals(to);
-            default          -> false;   // Completed and Cancelled are terminal
+    /**
+     * Returns the valid next statuses reachable from {@code currentStatus}.
+     * Returns an empty list for terminal states (Completed, Cancelled) or null input.
+     */
+    public static List<String> getAllowedNextStatuses(String currentStatus) {
+        if (currentStatus == null) return List.of();
+        return switch (currentStatus) {
+            case Order.STATUS_PENDING   -> List.of(Order.STATUS_PREPARING, Order.STATUS_CANCELLED);
+            case Order.STATUS_PREPARING -> List.of(Order.STATUS_READY, Order.STATUS_CANCELLED);
+            case Order.STATUS_READY     -> List.of(Order.STATUS_COMPLETED);
+            default                     -> List.of();
         };
+    }
+
+    /** Returns {@code true} if transitioning from {@code from} to {@code to} is permitted. */
+    public static boolean canTransition(String from, String to) {
+        return getAllowedNextStatuses(from).contains(to);
     }
 }

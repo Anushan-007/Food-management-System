@@ -81,6 +81,24 @@ CREATE TABLE IF NOT EXISTS order_items (
     FOREIGN KEY (food_id)  REFERENCES food_items(food_id) ON DELETE RESTRICT
 );
 
+-- ── Food Ratings ─────────────────────────────────────────────
+-- Per-order-item customer ratings (1–5) with optional review text.
+-- ON DELETE CASCADE: when an order item is deleted (via its order),
+-- the rating is removed automatically, consistent with the existing
+-- order_items → orders cascade policy.
+CREATE TABLE IF NOT EXISTS food_ratings (
+    rating_id     INT AUTO_INCREMENT PRIMARY KEY,
+    order_item_id INT NOT NULL,
+    rating        TINYINT NOT NULL,
+    review_text   VARCHAR(500) NULL,
+    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_food_rating_order_item (order_item_id),
+    CONSTRAINT chk_rating_value CHECK (rating BETWEEN 1 AND 5),
+    CONSTRAINT fk_food_rating_order_item FOREIGN KEY (order_item_id)
+        REFERENCES order_items(item_id) ON DELETE CASCADE
+);
+
 -- ── Schema Migrations ────────────────────────────────────────
 -- Tracks one-time data migrations applied by DatabaseInitializer.
 CREATE TABLE IF NOT EXISTS schema_migrations (

@@ -105,12 +105,14 @@ public class AdminOrdersFrame extends javax.swing.JFrame {
         itemsTitle.setBorder(BorderFactory.createEmptyBorder(0, 0, 8, 0));
 
         // ── Status update ────────────────────────────────────────────
-        cmbStatus = new javax.swing.JComboBox<>(
-                new String[]{"Pending", "Processing", "Ready", "Delivered", "Cancelled"});
+        // Populated dynamically in orderRowSelected() based on the order's current status.
+        cmbStatus = new javax.swing.JComboBox<>();
         cmbStatus.setFont(AppTheme.FONT_BODY);
         cmbStatus.setPreferredSize(new Dimension(160, AppTheme.BTN_H));
+        cmbStatus.setEnabled(false);
 
         btnUpdateStatus = AppTheme.primaryBtn("Update Status");
+        btnUpdateStatus.setEnabled(false);
         btnUpdateStatus.addActionListener(this::btnUpdateStatusActionPerformed);
         btnUpdateStatus.setPreferredSize(new Dimension(160, AppTheme.BTN_H));
 
@@ -148,12 +150,39 @@ public class AdminOrdersFrame extends javax.swing.JFrame {
         getContentPane().add(body,   BorderLayout.CENTER);
     }// </editor-fold>//GEN-END:initComponents
 
+    // ── Status control helpers ────────────────────────────────────────
+
+    /** Clears the status combo and disables both status controls. */
+    private void resetStatusControls() {
+        cmbStatus.removeAllItems();
+        cmbStatus.setEnabled(false);
+        btnUpdateStatus.setEnabled(false);
+    }
+
+    /**
+     * Populates the status combo with the valid next statuses for {@code currentStatus}.
+     * Enables controls only when at least one transition is available.
+     */
+    private void refreshStatusControls(String currentStatus) {
+        cmbStatus.removeAllItems();
+        List<String> next = OrderService.getAllowedNextStatuses(currentStatus);
+        if (next.isEmpty()) {
+            cmbStatus.setEnabled(false);
+            btnUpdateStatus.setEnabled(false);
+        } else {
+            for (String s : next) cmbStatus.addItem(s);
+            cmbStatus.setEnabled(true);
+            btnUpdateStatus.setEnabled(true);
+        }
+    }
+
     // ── Data loading ──────────────────────────────────────────────────
 
     private void loadOrdersTable() {
+        resetStatusControls();
+        itemsModel.setRowCount(0);
         try {
             ordersModel.setRowCount(0);
-            itemsModel.setRowCount(0);
             cachedOrders = OrderService.getAllOrders();
             for (Order o : cachedOrders) {
                 String customerName = (o.getCustomer() != null)
@@ -175,10 +204,19 @@ public class AdminOrdersFrame extends javax.swing.JFrame {
     }
 
     private void orderRowSelected() {
-        int row = tblOrders.getSelectedRow();
-        if (row < 0 || row >= cachedOrders.size()) return;
-        Order order = cachedOrders.get(row);
-        cmbStatus.setSelectedItem(order.getStatus());
+        int viewRow = tblOrders.getSelectedRow();
+        if (viewRow < 0) {
+            itemsModel.setRowCount(0);
+            resetStatusControls();
+            return;
+        }
+        int modelRow = tblOrders.convertRowIndexToModel(viewRow);
+        if (modelRow < 0 || modelRow >= cachedOrders.size()) {
+            resetStatusControls();
+            return;
+        }
+        Order order = cachedOrders.get(modelRow);
+        refreshStatusControls(order.getStatus());
         itemsModel.setRowCount(0);
         for (OrderItem item : order.getOrderItems()) {
             itemsModel.addRow(new Object[]{
@@ -193,16 +231,22 @@ public class AdminOrdersFrame extends javax.swing.JFrame {
     // ── Event handlers ────────────────────────────────────────────────
 
     private void btnUpdateStatusActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnUpdateStatusActionPerformed
-        int row = tblOrders.getSelectedRow();
-        if (row < 0) {
+        int viewRow = tblOrders.getSelectedRow();
+        if (viewRow < 0) {
             AppTheme.showWarning(this, "No Selection",
                     "Please select an order to update.");
             return;
         }
-        int    orderId   = (int) ordersModel.getValueAt(row, 0);
-        String newStatus = cmbStatus.getSelectedItem().toString();
-        String customer  = ordersModel.getValueAt(row, 1).toString();
+        int modelRow  = tblOrders.convertRowIndexToModel(viewRow);
+        int orderId   = (int) ordersModel.getValueAt(modelRow, 0);
+        String newStatus = (String) cmbStatus.getSelectedItem();
+        String customer  = ordersModel.getValueAt(modelRow, 1).toString();
 
+        if (newStatus == null) {
+            AppTheme.showWarning(this, "No Status Selected",
+                    "Please select a status to apply.");
+            return;
+        }
         if (!AppTheme.showConfirm(this, "Confirm Update",
                 "Set order #" + orderId + " (" + customer + ") to \"" + newStatus + "\"?")) {
             return;
@@ -212,6 +256,8 @@ public class AdminOrdersFrame extends javax.swing.JFrame {
             AppTheme.showInfo(this, "Updated",
                     "Order #" + orderId + " status set to \"" + newStatus + "\".");
             loadOrdersTable();
+        } catch (IllegalArgumentException ex) {
+            AppTheme.showWarning(this, "Invalid Status Update", ex.getMessage());
         } catch (Exception ex) {
             AppTheme.showError(this, "Database Error",
                     "Could not update status: " + ex.getMessage());

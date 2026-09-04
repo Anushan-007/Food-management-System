@@ -1,8 +1,10 @@
 package citybites.ui;
 
 import citybites.model.Customer;
+import citybites.model.FoodRating;
 import citybites.model.Order;
 import citybites.model.OrderItem;
+import citybites.service.FoodRatingService;
 import citybites.service.OrderService;
 import citybites.util.SessionManager;
 import java.awt.*;
@@ -37,9 +39,10 @@ public class CustomerOrdersFrame extends javax.swing.JFrame {
     @SuppressWarnings("unchecked")
     // <editor-fold defaultstate="collapsed" desc="Generated Code">//GEN-BEGIN:initComponents
     private void initComponents() {
-        tblOrders = new javax.swing.JTable();
-        tblItems  = new javax.swing.JTable();
-        btnBack   = new javax.swing.JButton();
+        tblOrders    = new javax.swing.JTable();
+        tblItems     = new javax.swing.JTable();
+        btnBack      = new javax.swing.JButton();
+        btnRateItems = new javax.swing.JButton();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
 
@@ -70,7 +73,7 @@ public class CustomerOrdersFrame extends javax.swing.JFrame {
         tblOrders.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) orderRowSelected();
         });
-        // Hide internal ID column from view; cachedOrders.get(row) still works for item lookup
+        // Hide internal ID column from view; cachedOrders.get(modelRow) still works
         tblOrders.getColumnModel().removeColumn(tblOrders.getColumnModel().getColumn(0));
 
         JScrollPane ordersScroll = new JScrollPane(tblOrders);
@@ -106,10 +109,21 @@ public class CustomerOrdersFrame extends javax.swing.JFrame {
         itemsTitle.setForeground(AppTheme.TEXT_PRIMARY);
         itemsTitle.setBorder(BorderFactory.createEmptyBorder(0, 0, 8, 0));
 
+        // ── Rate Items button ────────────────────────────────────────
+        btnRateItems = AppTheme.secondaryBtn("Rate Items");
+        btnRateItems.setEnabled(false);
+        btnRateItems.setPreferredSize(new Dimension(160, AppTheme.BTN_H));
+        btnRateItems.addActionListener(e -> openRatingDialog());
+
+        JPanel detailFooter = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 6));
+        detailFooter.setBackground(AppTheme.BG_MAIN);
+        detailFooter.add(btnRateItems);
+
         JPanel detailPanel = new JPanel(new BorderLayout(0, 6));
         detailPanel.setBackground(AppTheme.BG_MAIN);
-        detailPanel.add(itemsTitle,  BorderLayout.NORTH);
-        detailPanel.add(itemsScroll, BorderLayout.CENTER);
+        detailPanel.add(itemsTitle,   BorderLayout.NORTH);
+        detailPanel.add(itemsScroll,  BorderLayout.CENTER);
+        detailPanel.add(detailFooter, BorderLayout.SOUTH);
 
         // ── Split pane ───────────────────────────────────────────────
         JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, ordersPanel, detailPanel);
@@ -135,6 +149,7 @@ public class CustomerOrdersFrame extends javax.swing.JFrame {
         ordersModel.setRowCount(0);
         itemsModel.setRowCount(0);
         cachedOrders.clear();
+        updateRateButtonState();   // disable while loading
 
         Customer customer = SessionManager.getLoggedInCustomer();
         if (customer == null) {
@@ -161,6 +176,7 @@ public class CustomerOrdersFrame extends javax.swing.JFrame {
             AppTheme.showError(this, "Database Error",
                     "Could not load orders: " + e.getMessage());
         }
+        updateRateButtonState();
     }
 
     private void showEmptyState(String reason) {
@@ -169,9 +185,17 @@ public class CustomerOrdersFrame extends javax.swing.JFrame {
     }
 
     private void orderRowSelected() {
-        int row = tblOrders.getSelectedRow();
-        if (row < 0 || row >= cachedOrders.size()) return;
-        Order order = cachedOrders.get(row);
+        int viewRow = tblOrders.getSelectedRow();
+        if (viewRow < 0) {
+            itemsModel.setRowCount(0);
+            updateRateButtonState();
+            return;
+        }
+        // Use convertRowIndexToModel in case a RowSorter is ever attached
+        int modelRow = tblOrders.convertRowIndexToModel(viewRow);
+        if (modelRow < 0 || modelRow >= cachedOrders.size()) return;
+
+        Order order = cachedOrders.get(modelRow);
         itemsModel.setRowCount(0);
         for (OrderItem item : order.getOrderItems()) {
             itemsModel.addRow(new Object[]{
@@ -181,6 +205,80 @@ public class CustomerOrdersFrame extends javax.swing.JFrame {
                 String.format("%.2f", item.getSubtotal())
             });
         }
+        updateRateButtonState();
+    }
+
+    // ── Rate Items button state ────────────────────────────────────────
+
+    /**
+     * Enables the "Rate Items" / "View / Edit Ratings" button only when:
+     * <ul>
+     *   <li>An order row is selected</li>
+     *   <li>The order belongs to the logged-in customer</li>
+     *   <li>The order status is {@code "Completed"}</li>
+     * </ul>
+     * Button text: "View / Edit Ratings" when all items are already rated;
+     * "Rate Items" otherwise.
+     */
+    private void updateRateButtonState() {
+        int viewRow = tblOrders.getSelectedRow();
+        if (viewRow < 0) {
+            btnRateItems.setEnabled(false);
+            btnRateItems.setText("Rate Items");
+            return;
+        }
+        int modelRow = tblOrders.convertRowIndexToModel(viewRow);
+        if (modelRow < 0 || modelRow >= cachedOrders.size()) {
+            btnRateItems.setEnabled(false);
+            btnRateItems.setText("Rate Items");
+            return;
+        }
+
+        Order order = cachedOrders.get(modelRow);
+        Customer customer = SessionManager.getLoggedInCustomer();
+
+        // Verify ownership and status (never rely only on UI state)
+        if (customer == null
+                || order.getCustomer().getCustomerId() != customer.getCustomerId()
+                || !"Completed".equals(order.getStatus())) {
+            btnRateItems.setEnabled(false);
+            btnRateItems.setText("Rate Items");
+            return;
+        }
+
+        btnRateItems.setEnabled(true);
+
+        // Determine button text based on whether all items are already rated
+        List<OrderItem> items = order.getOrderItems();
+        if (!items.isEmpty()) {
+            List<FoodRating> ratings = FoodRatingService.getRatingsForOrder(order.getOrderId());
+            boolean allRated = ratings.size() >= items.size();
+            btnRateItems.setText(allRated ? "View / Edit Ratings" : "Rate Items");
+        } else {
+            btnRateItems.setText("Rate Items");
+        }
+    }
+
+    private void openRatingDialog() {
+        int viewRow = tblOrders.getSelectedRow();
+        if (viewRow < 0) return;
+        int modelRow = tblOrders.convertRowIndexToModel(viewRow);
+        if (modelRow < 0 || modelRow >= cachedOrders.size()) return;
+
+        Order order = cachedOrders.get(modelRow);
+
+        // Re-enforce authorization in service before opening dialog
+        if (!"Completed".equals(order.getStatus())) {
+            AppTheme.showWarning(this, "Not Eligible",
+                "Only completed orders can be rated.");
+            return;
+        }
+
+        FoodRatingDialog dialog = new FoodRatingDialog(this, order);
+        dialog.setVisible(true);
+
+        // Refresh button state after dialog closes (ratings may have changed)
+        updateRateButtonState();
     }
 
     // ── Event handlers ────────────────────────────────────────────────
@@ -195,8 +293,9 @@ public class CustomerOrdersFrame extends javax.swing.JFrame {
     }
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
-    private javax.swing.JTable tblOrders;
-    private javax.swing.JTable tblItems;
+    private javax.swing.JTable  tblOrders;
+    private javax.swing.JTable  tblItems;
     private javax.swing.JButton btnBack;
+    private javax.swing.JButton btnRateItems;
     // End of variables declaration//GEN-END:variables
 }

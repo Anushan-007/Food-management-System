@@ -3,9 +3,12 @@ package citybites.ui;
 import citybites.model.FeaturedAssignmentResult;
 import citybites.model.FoodCategory;
 import citybites.model.FoodItem;
+import citybites.model.FoodRatingSummary;
 import citybites.service.FoodCategoryService;
+import citybites.service.FoodRatingService;
 import citybites.service.FoodService;
 import citybites.util.ImageManager;
+import java.util.Map;
 import java.awt.*;
 import java.io.File;
 import java.util.List;
@@ -165,16 +168,20 @@ public class FoodManagementFrame extends javax.swing.JFrame {
         btnUpdate = AppTheme.secondaryBtn("Update Item");
         btnDelete = AppTheme.dangerBtn("Delete Item");
         btnClear  = AppTheme.ghostBtn("Clear Form");
+        btnViewReviews = AppTheme.secondaryBtn("View Reviews");
 
         btnAdd.setMaximumSize(new Dimension(Integer.MAX_VALUE, AppTheme.BTN_H));
         btnUpdate.setMaximumSize(new Dimension(Integer.MAX_VALUE, AppTheme.BTN_H));
         btnDelete.setMaximumSize(new Dimension(Integer.MAX_VALUE, AppTheme.BTN_H));
         btnClear.setMaximumSize(new Dimension(Integer.MAX_VALUE, AppTheme.BTN_H));
+        btnViewReviews.setMaximumSize(new Dimension(Integer.MAX_VALUE, AppTheme.BTN_H));
+        btnViewReviews.setEnabled(false);
 
         btnAdd.addActionListener(e -> btnAddActionPerformed(null));
         btnUpdate.addActionListener(e -> btnUpdateActionPerformed(null));
         btnDelete.addActionListener(e -> btnDeleteActionPerformed(null));
         btnClear.addActionListener(e -> btnClearActionPerformed(null));
+        btnViewReviews.addActionListener(e -> openReviewsDialog());
 
         JPanel formCard = new JPanel();
         formCard.setBackground(AppTheme.BG_CARD);
@@ -193,6 +200,7 @@ public class FoodManagementFrame extends javax.swing.JFrame {
         btnUpdate.setAlignmentX(Component.LEFT_ALIGNMENT);
         btnDelete.setAlignmentX(Component.LEFT_ALIGNMENT);
         btnClear.setAlignmentX(Component.LEFT_ALIGNMENT);
+        btnViewReviews.setAlignmentX(Component.LEFT_ALIGNMENT);
         btnPickImage.setAlignmentX(Component.LEFT_ALIGNMENT);
         btnPickImage.setMaximumSize(new Dimension(Integer.MAX_VALUE, AppTheme.BTN_H));
 
@@ -217,6 +225,8 @@ public class FoodManagementFrame extends javax.swing.JFrame {
         formCard.add(btnDelete);
         formCard.add(Box.createVerticalStrut(6));
         formCard.add(btnClear);
+        formCard.add(Box.createVerticalStrut(6));
+        formCard.add(btnViewReviews);
         formCard.add(Box.createVerticalGlue());
 
         JScrollPane formScroll = new JScrollPane(formCard);
@@ -224,7 +234,7 @@ public class FoodManagementFrame extends javax.swing.JFrame {
         formScroll.setPreferredSize(new Dimension(280, 0));
 
         // ── Table panel (right) ──────────────────────────────────────
-        String[] columns = {"ID", "Name", "Price (Rs.)", "Stock", "Available", "Category", "Image", "Slot"};
+        String[] columns = {"ID", "Name", "Price (Rs.)", "Stock", "Available", "Category", "Image", "Slot", "Avg Rating", "Reviews"};
         tableModel = new DefaultTableModel(columns, 0) {
             @Override public boolean isCellEditable(int r, int c2) { return false; }
         };
@@ -291,6 +301,22 @@ public class FoodManagementFrame extends javax.swing.JFrame {
         colSlot.setHeaderRenderer(headerRenderer(origHdr, SwingConstants.CENTER));
         colSlot.setCellRenderer(new FeaturedSlotCellRenderer());
 
+        // ── Avg Rating (model col 8) — centre-aligned text ────────────────────
+        var colRating = tblFood.getColumnModel().getColumn(8);
+        colRating.setMinWidth(80);
+        colRating.setHeaderRenderer(headerRenderer(origHdr, SwingConstants.CENTER));
+        var ratingRenderer = new DefaultTableCellRenderer();
+        ratingRenderer.setHorizontalAlignment(SwingConstants.CENTER);
+        colRating.setCellRenderer(ratingRenderer);
+
+        // ── Reviews (model col 9) — centre-aligned text ───────────────────────
+        var colReviews = tblFood.getColumnModel().getColumn(9);
+        colReviews.setMinWidth(70);
+        colReviews.setHeaderRenderer(headerRenderer(origHdr, SwingConstants.CENTER));
+        var reviewsRenderer = new DefaultTableCellRenderer();
+        reviewsRenderer.setHorizontalAlignment(SwingConstants.CENTER);
+        colReviews.setCellRenderer(reviewsRenderer);
+
         tblFood.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) tableRowSelected();
         });
@@ -352,14 +378,19 @@ public class FoodManagementFrame extends javax.swing.JFrame {
         try {
             tableModel.setRowCount(0);
             List<FoodItem> items = FoodService.getAllFoodItems();
+            Map<Integer, FoodRatingSummary> summaries = FoodRatingService.getRatingSummaries();
             for (FoodItem f : items) {
+                FoodRatingSummary s = summaries.getOrDefault(f.getFoodId(),
+                        new FoodRatingSummary(f.getFoodId(), 0.0, 0));
                 tableModel.addRow(new Object[]{
                     f.getFoodId(), f.getFoodName(),
                     String.format("%.2f", f.getPrice()),
                     f.getStockQuantity(), f.isAvailable(),
                     (f.getCategoryName() != null ? f.getCategoryName() : "Uncategorized"),
                     f.getImagePath(),
-                    f.getFeaturedPosition()
+                    f.getFeaturedPosition(),
+                    s.formatAverage(),
+                    s.formatCount()
                 });
             }
         } catch (Exception e) {
@@ -403,30 +434,37 @@ public class FoodManagementFrame extends javax.swing.JFrame {
         if (totalWidth <= 0) totalWidth = tblFood.getWidth();
         if (totalWidth <= 0) return;
         var cols = tblFood.getColumnModel();
-        // View columns after ID removal: Name, Price, Stock, Available, Category, Image, Slot
-        cols.getColumn(0).setPreferredWidth((int) (totalWidth * 0.24)); // Name
-        cols.getColumn(1).setPreferredWidth((int) (totalWidth * 0.11)); // Price
-        cols.getColumn(2).setPreferredWidth((int) (totalWidth * 0.08)); // Stock
-        cols.getColumn(3).setPreferredWidth((int) (totalWidth * 0.12)); // Available
-        cols.getColumn(4).setPreferredWidth((int) (totalWidth * 0.16)); // Category
-        cols.getColumn(5).setPreferredWidth((int) (totalWidth * 0.17)); // Image
-        cols.getColumn(6).setPreferredWidth((int) (totalWidth * 0.12)); // Slot
+        // View columns after ID removal: Name, Price, Stock, Available, Category, Image, Slot, AvgRating, Reviews
+        cols.getColumn(0).setPreferredWidth((int) (totalWidth * 0.20)); // Name
+        cols.getColumn(1).setPreferredWidth((int) (totalWidth * 0.10)); // Price
+        cols.getColumn(2).setPreferredWidth((int) (totalWidth * 0.07)); // Stock
+        cols.getColumn(3).setPreferredWidth((int) (totalWidth * 0.10)); // Available
+        cols.getColumn(4).setPreferredWidth((int) (totalWidth * 0.14)); // Category
+        cols.getColumn(5).setPreferredWidth((int) (totalWidth * 0.15)); // Image
+        cols.getColumn(6).setPreferredWidth((int) (totalWidth * 0.09)); // Slot
+        cols.getColumn(7).setPreferredWidth((int) (totalWidth * 0.09)); // Avg Rating
+        cols.getColumn(8).setPreferredWidth((int) (totalWidth * 0.06)); // Reviews
     }
 
     private void filterTable(String query) {
         try {
             tableModel.setRowCount(0);
             List<FoodItem> items = FoodService.getAllFoodItems();
+            Map<Integer, FoodRatingSummary> summaries = FoodRatingService.getRatingSummaries();
             String q = (query == null) ? "" : query.toLowerCase().trim();
             for (FoodItem f : items) {
                 if (q.isEmpty() || f.getFoodName().toLowerCase().contains(q)) {
+                    FoodRatingSummary s = summaries.getOrDefault(f.getFoodId(),
+                            new FoodRatingSummary(f.getFoodId(), 0.0, 0));
                     tableModel.addRow(new Object[]{
                         f.getFoodId(), f.getFoodName(),
                         String.format("%.2f", f.getPrice()),
                         f.getStockQuantity(), f.isAvailable(),
                         (f.getCategoryName() != null ? f.getCategoryName() : "Uncategorized"),
                         f.getImagePath(),
-                        f.getFeaturedPosition()
+                        f.getFeaturedPosition(),
+                        s.formatAverage(),
+                        s.formatCount()
                     });
                 }
             }
@@ -720,21 +758,28 @@ public class FoodManagementFrame extends javax.swing.JFrame {
         dispose();
     }//GEN-LAST:event_btnBackActionPerformed
 
+    private void openReviewsDialog() {
+        if (selectedFoodId < 1) return;
+        new FoodReviewsDialog(this, selectedFoodId).setVisible(true);
+    }
+
     // ── Form modes ─────────────────────────────────────────────────────────
 
-    /** Switches to Add mode: Add enabled, Update/Delete disabled, no selected food ID. */
+    /** Switches to Add mode: Add enabled, Update/Delete/ViewReviews disabled, no selected food ID. */
     private void setAddMode() {
         selectedFoodId = -1;
         btnAdd.setEnabled(true);
         btnUpdate.setEnabled(false);
         btnDelete.setEnabled(false);
+        btnViewReviews.setEnabled(false);
     }
 
-    /** Switches to Edit mode: Add disabled, Update/Delete enabled. */
+    /** Switches to Edit mode: Add disabled, Update/Delete/ViewReviews enabled. */
     private void setEditMode() {
         btnAdd.setEnabled(false);
         btnUpdate.setEnabled(true);
         btnDelete.setEnabled(true);
+        btnViewReviews.setEnabled(true);
     }
 
     private void clearForm() {
@@ -854,6 +899,7 @@ public class FoodManagementFrame extends javax.swing.JFrame {
     private javax.swing.JButton                    btnUpdate;
     private javax.swing.JButton                    btnDelete;
     private javax.swing.JButton                    btnClear;
+    private javax.swing.JButton                    btnViewReviews;
     private javax.swing.JButton                    btnPickImage;
     private javax.swing.JTextField                 txtName;
     private javax.swing.JTextField                 txtPrice;
